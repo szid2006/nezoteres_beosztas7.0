@@ -1,15 +1,23 @@
-<h2>Eredmény</h2>
+<h2>Összegzés</h2>
 
 <h3>Műszakok</h3>
 <ul>
 {% for s in shifts %}
-  <li>{{ s.show }} – {{ s.datetime }} ({{ s.roles }})</li>
+  <li>
+    {{ s.show }} – {{ s.datetime }}<br>
+    Szükséges: {{ s.roles }}
+  </li>
 {% endfor %}
 </ul>
 
 <h3>Emberek</h3>
 <ul>
 {% for w in workers %}
-  <li>{{ w.name }} {% if w.is_ek %}(ÉK){% endif %}</li>
+  <li>
+    {{ w.name }}
+    {% if w.is_ek %}(ÉK){% endif %}
+    {% if w.preferred %} – nézné: {{ w.preferred }}{% endif %}
+    {% if w.unavailable %} – nem ér rá: {{ w.unavailable }}{% endif %}
+  </li>
 {% endfor %}
 </ul>
