@@ -65,11 +65,13 @@ def shifts():
 @login_required
 def workers():
     if request.method == "POST":
-        WORKERS.append({
-            "name": request.form.get("name"),
-            "preferred": request.form.get("preferred"),
-            "is_ek": bool(request.form.get("is_ek"))
-        })
+       WORKERS.append({
+    "name": request.form.get("name"),
+    "preferred": request.form.get("preferred"),  # pl. Hamlet
+    "is_ek": "is_ek" in request.form,
+    "unavailable": request.form.get("unavailable")  # szövegként egyelőre
+})
+
 
     return render_template("workers.html", workers=WORKERS)
 
