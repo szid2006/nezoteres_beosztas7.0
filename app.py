@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, session
-from datetime import datetime
+
+# ================= SEGÉDFÜGGVÉNYEK =================
+
 def same_day(dt1, dt2):
     return dt1.split("T")[0] == dt2.split("T")[0]
 
@@ -7,20 +9,27 @@ def same_day(dt1, dt2):
 def already_worked_that_day(worker_name, shift, assignments):
     for a in assignments:
         if same_day(a["datetime"], shift["datetime"]):
-            if worker_name in a["assigned"].values():
-                return True
+            for names in a["assigned"].values():
+                if worker_name in names:
+                    return True
     return False
 
+
+# ================= FLASK APP =================
 
 app = Flask(__name__)
 app.secret_key = "titkos_jelszo"
 
 
-# ---------- LOGIN ----------
+# ================= LOGIN =================
+
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if request.form.get("username") == "admin" and request.form.get("password") == "1234":
+        if (
+            request.form.get("username") == "admin"
+            and request.form.get("password") == "1234"
+        ):
             session["logged_in"] = True
             return redirect("/shifts")
     return render_template("login.html")
@@ -35,7 +44,8 @@ def login_required(fn):
     return wrapper
 
 
-# ---------- SHIFTS ----------
+# ================= ADATOK =================
+
 SHIFTS = []
 WORKERS = []
 
@@ -47,16 +57,9 @@ ROLES = [
     "Ruhatár jobb",
     "Ruhatár erkély"
 ]
-ROLE_LIMITS = {
-    "Nézőtér beülős": 2,
-    "Nézőtér csak csipog": 2,
-    "Jolly joker": 1,
-    "Ruhatár bal": 2,
-    "Ruhatár jobb": 1,
-    "Ruhatár erkély": 1
-}
 
 
+# ================= SHIFTS =================
 
 @app.route("/shifts", methods=["GET", "POST"])
 @login_required
@@ -80,33 +83,27 @@ def shifts():
     return render_template("shifts.html", roles=ROLES, shifts=SHIFTS)
 
 
-# ---------- WORKERS ----------
+# ================= WORKERS =================
+
 @app.route("/workers", methods=["GET", "POST"])
 @login_required
 def workers():
     if request.method == "POST":
-       WORKERS.append({
-    "name": request.form.get("name"),
-    "preferred": request.form.get("preferred"),  # pl. Hamlet
-    "is_ek": "is_ek" in request.form,
-    "unavailable": request.form.get("unavailable")  # szövegként egyelőre
-})
-
+        WORKERS.append({
+            "name": request.form.get("name"),
+            "preferred": request.form.get("preferred"),
+            "is_ek": "is_ek" in request.form,
+            "unavailable": request.form.get("unavailable")
+        })
 
     return render_template("workers.html", workers=WORKERS)
 
 
-# ---------- RESULT ----------
-@app.route("/result")
-@login_required
-def result():
-    return render_template("result.html", shifts=SHIFTS, workers=WORKERS)
-    @app.route("/generate")
-@login_required
-    def generate_schedule(shifts, workers):
+# ================= BEOSZTÓ LOGIKA =================
+
+def generate_schedule(shifts, workers):
     assignments = []
 
-    # statisztika
     work_count = {w["name"]: 0 for w in workers}
     role_history = {w["name"]: [] for w in workers}
 
@@ -123,15 +120,11 @@ def result():
                 for w in workers:
                     name = w["name"]
 
-                    # napi duplázás tiltás
                     if already_worked_that_day(name, shift, assignments):
                         continue
 
-                    # ÉK szabály
                     if w["is_ek"]:
-                        if ek_used:
-                            continue
-                        if role == "Jolly joker":
+                        if ek_used or role == "Jolly joker":
                             continue
 
                     candidates.append(w)
@@ -142,13 +135,10 @@ def result():
                 def score(w):
                     s = work_count[w["name"]] * 2
                     s += role_history[w["name"]].count(role)
-
                     if w["is_ek"]:
                         s += 5
-
                     if w["preferred"] == shift["show"] and role == "Nézőtér beülős":
                         s -= 10
-
                     return s
 
                 chosen = min(candidates, key=score)
@@ -168,7 +158,11 @@ def result():
 
     return assignments
 
+
+# ================= GENERATE ROUTE =================
+
+@app.route("/generate")
+@login_required
 def generate():
     result = generate_schedule(SHIFTS, WORKERS)
     return render_template("result.html", result=result)
-
