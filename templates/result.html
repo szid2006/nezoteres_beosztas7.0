@@ -1,0 +1,15 @@
+<h2>Eredmény</h2>
+
+<h3>Műszakok</h3>
+<ul>
+{% for s in shifts %}
+  <li>{{ s.show }} – {{ s.datetime }} ({{ s.roles }})</li>
+{% endfor %}
+</ul>
+
+<h3>Emberek</h3>
+<ul>
+{% for w in workers %}
+  <li>{{ w.name }} {% if w.is_ek %}(ÉK){% endif %}</li>
+{% endfor %}
+</ul>
