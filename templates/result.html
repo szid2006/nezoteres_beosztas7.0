@@ -1,23 +1,17 @@
-<h2>Összegzés</h2>
+<h2>Beosztás</h2>
 
-<h3>Műszakok</h3>
-<ul>
-{% for s in shifts %}
-  <li>
-    {{ s.show }} – {{ s.datetime }}<br>
-    Szükséges: {{ s.roles }}
-  </li>
+{% for r in result %}
+  <h3>{{ r.show }} – {{ r.datetime }}</h3>
+  <ul>
+    {% for role, names in r.assigned.items() %}
+      <li>
+        <b>{{ role }}</b>:
+        {% if names %}
+          {{ names | join(", ") }}
+        {% else %}
+          ❌ nincs elég ember
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
 {% endfor %}
-</ul>
-
-<h3>Emberek</h3>
-<ul>
-{% for w in workers %}
-  <li>
-    {{ w.name }}
-    {% if w.is_ek %}(ÉK){% endif %}
-    {% if w.preferred %} – nézné: {{ w.preferred }}{% endif %}
-    {% if w.unavailable %} – nem ér rá: {{ w.unavailable }}{% endif %}
-  </li>
-{% endfor %}
-</ul>
