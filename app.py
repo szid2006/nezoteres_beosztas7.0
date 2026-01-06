@@ -1,5 +1,16 @@
 from flask import Flask, render_template, request, redirect, session
 from datetime import datetime
+def same_day(dt1, dt2):
+    return dt1.split("T")[0] == dt2.split("T")[0]
+
+
+def already_worked_that_day(worker_name, shift, assignments):
+    for a in assignments:
+        if same_day(a["datetime"], shift["datetime"]):
+            if worker_name in a["assigned"].values():
+                return True
+    return False
+
 
 app = Flask(__name__)
 app.secret_key = "titkos_jelszo"
