@@ -1,0 +1,15 @@
+<h2>Műszakok</h2>
+
+<form method="post">
+  Előadás: <input name="show"><br>
+  Időpont: <input type="datetime-local" name="datetime"><br>
+
+  {% for role in roles %}
+    {{ role }}:
+    <input type="number" name="{{ role }}" min="0"><br>
+  {% endfor %}
+
+  <button>Hozzáad</button>
+</form>
+
+<a href="/workers">Tovább → Emberek</a>
