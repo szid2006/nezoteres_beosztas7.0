@@ -47,6 +47,15 @@ ROLES = [
     "Ruhatár jobb",
     "Ruhatár erkély"
 ]
+ROLE_LIMITS = {
+    "Nézőtér beülős": 2,
+    "Nézőtér csak csipog": 2,
+    "Jolly joker": 1,
+    "Ruhatár bal": 2,
+    "Ruhatár jobb": 1,
+    "Ruhatár erkély": 1
+}
+
 
 
 @app.route("/shifts", methods=["GET", "POST"])
@@ -92,3 +101,74 @@ def workers():
 @login_required
 def result():
     return render_template("result.html", shifts=SHIFTS, workers=WORKERS)
+    @app.route("/generate")
+@login_required
+    def generate_schedule(shifts, workers):
+    assignments = []
+
+    # statisztika
+    work_count = {w["name"]: 0 for w in workers}
+    role_history = {w["name"]: [] for w in workers}
+
+    for shift in shifts:
+        assigned = {}
+        ek_used = False
+
+        for role, needed in shift["roles"].items():
+            assigned[role] = []
+
+            for _ in range(needed):
+                candidates = []
+
+                for w in workers:
+                    name = w["name"]
+
+                    # napi duplázás tiltás
+                    if already_worked_that_day(name, shift, assignments):
+                        continue
+
+                    # ÉK szabály
+                    if w["is_ek"]:
+                        if ek_used:
+                            continue
+                        if role == "Jolly joker":
+                            continue
+
+                    candidates.append(w)
+
+                if not candidates:
+                    continue
+
+                def score(w):
+                    s = work_count[w["name"]] * 2
+                    s += role_history[w["name"]].count(role)
+
+                    if w["is_ek"]:
+                        s += 5
+
+                    if w["preferred"] == shift["show"] and role == "Nézőtér beülős":
+                        s -= 10
+
+                    return s
+
+                chosen = min(candidates, key=score)
+
+                assigned[role].append(chosen["name"])
+                work_count[chosen["name"]] += 1
+                role_history[chosen["name"]].append(role)
+
+                if chosen["is_ek"]:
+                    ek_used = True
+
+        assignments.append({
+            "show": shift["show"],
+            "datetime": shift["datetime"],
+            "assigned": assigned
+        })
+
+    return assignments
+
+def generate():
+    result = generate_schedule(SHIFTS, WORKERS)
+    return render_template("result.html", result=result)
+
