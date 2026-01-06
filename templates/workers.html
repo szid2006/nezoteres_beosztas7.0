@@ -1,10 +1,32 @@
 <h2>Emberek</h2>
 
 <form method="post">
-  Név: <input name="name"><br>
-  Előadás, amit nézne: <input name="preferred"><br>
-  ÉK: <input type="checkbox" name="is_ek"><br>
+  Név: <input name="name" required><br><br>
+
+  Mikor nem ér rá?<br>
+  <input name="unavailable" placeholder="pl. 2026-02-03 17:00–21:00"><br><br>
+
+  Előadás, amit meg szeretne nézni:<br>
+  <input name="preferred" placeholder="pl. Hamlet"><br><br>
+
+  ÉK (kevésbé megbízható):
+  <input type="checkbox" name="is_ek"><br><br>
+
   <button>Hozzáad</button>
 </form>
 
-<a href="/result">Eredmény</a>
+<hr>
+
+<h3>Felvett emberek</h3>
+<ul>
+{% for w in workers %}
+  <li>
+    {{ w.name }}
+    {% if w.is_ek %}(ÉK){% endif %}
+    {% if w.preferred %} – nézné: {{ w.preferred }}{% endif %}
+    {% if w.unavailable %} – nem ér rá: {{ w.unavailable }}{% endif %}
+  </li>
+{% endfor %}
+</ul>
+
+<a href="/result">Tovább</a>
