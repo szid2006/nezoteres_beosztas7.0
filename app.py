@@ -219,4 +219,57 @@ def generate_schedule(shifts, workers):
     return assignments
 
 
-# =================================
+# ======================================================
+# GENERATE
+# ======================================================
+
+@app.route("/generate")
+@login_required
+def generate():
+    result = generate_schedule(SHIFTS, WORKERS)
+    return render_template("result.html", result=result)
+
+
+# ======================================================
+# EXPORT – EXCEL
+# ======================================================
+
+@app.route("/export")
+@login_required
+def export_excel():
+    result = generate_schedule(SHIFTS, WORKERS)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Beosztás"
+
+    ws.append([
+        "Dátum",
+        "Előadás",
+        "Munkakör",
+        "Név",
+        "ÉK"
+    ])
+
+    for shift in result:
+        for role, names in shift["assigned"].items():
+            for name in names:
+                worker = next(w for w in WORKERS if w["name"] == name)
+                ws.append([
+                    shift["datetime"],
+                    shift["show"],
+                    role,
+                    name,
+                    "IGEN" if worker["is_ek"] else ""
+                ])
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name="nezoter_beosztas.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
