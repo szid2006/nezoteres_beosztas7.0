@@ -1,15 +1,34 @@
 <h2>Műszakok</h2>
 
 <form method="post">
-  Előadás: <input name="show"><br>
-  Időpont: <input type="datetime-local" name="datetime"><br>
+  Előadás: <input name="show" required><br>
+  Időpont: <input type="datetime-local" name="datetime" required><br><br>
 
   {% for role in roles %}
     {{ role }}:
-    <input type="number" name="{{ role }}" min="0"><br>
+    <input type="number" name="{{ role }}" min="0" value="0"><br>
   {% endfor %}
 
-  <button>Hozzáad</button>
+  <br>
+  <button type="submit">Műszak hozzáadása</button>
 </form>
 
-<a href="/workers">Tovább → Emberek</a>
+<hr>
+
+<h3>Felvett műszakok ({{ shifts|length }} db)</h3>
+
+{% if shifts|length == 0 %}
+  <p>❗ Még nincs műszak felvéve</p>
+{% endif %}
+
+<ul>
+{% for s in shifts %}
+  <li>
+    {{ s.show }} – {{ s.datetime }}<br>
+    {{ s.roles }}
+  </li>
+{% endfor %}
+</ul>
+
+<br>
+<a href="/workers">→ Tovább az emberekhez</a>
