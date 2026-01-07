@@ -1,31 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Beosztás</title>
+</head>
+<body>
+
 <h2>Beosztás</h2>
 
-<p><b>Műszakok száma:</b> {{ result|length }}</p>
+<p><b>Generált műszakok száma:</b> {{ result|length }}</p>
 
 {% if result|length == 0 %}
-  <p style="color:red;">
-    ❌ Nincs mit beosztani.<br>
-    Ellenőrizd, hogy:
-    <ul>
-      <li>van-e felvett műszak</li>
-      <li>van-e felvett ember</li>
-      <li>a műszaknál be van-e jelölve legalább 1 munkakör</li>
-    </ul>
-  </p>
+    <p style="color:red;">❌ Nincs mit megjeleníteni</p>
 {% endif %}
 
 {% for r in result %}
-  <h3>{{ r.show }} – {{ r.datetime }}</h3>
-  <ul>
-    {% for role, names in r.assigned.items() %}
-      <li>
-        <b>{{ role }}</b>:
-        {% if names %}
-          {{ names | join(", ") }}
-        {% else %}
-          ❌ nincs elég ember
-        {% endif %}
-      </li>
-    {% endfor %}
-  </ul>
+    <hr>
+    <h3>{{ r.show }} – {{ r.datetime }}</h3>
+
+    <ul>
+        {% for role, names in r.assigned.items() %}
+            <li>
+                <b>{{ role }}</b>:
+                {% if names %}
+                    {{ names | join(", ") }}
+                {% else %}
+                    ❌ nincs beosztva
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
 {% endfor %}
+
+<br>
+<a href="/shifts">← Vissza műszakokhoz</a>
+
+</body>
+</html>
