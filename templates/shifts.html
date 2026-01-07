@@ -1,34 +1,94 @@
-<h2>Műszakok</h2>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Műszakok</title>
+    <style>
+        .role-block {
+            margin-bottom: 15px;
+        }
+        .boxes {
+            display: inline-block;
+        }
+        .boxes input {
+            margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
 
-<form method="post">
-  Előadás: <input name="show" required><br>
-  Időpont: <input type="datetime-local" name="datetime" required><br><br>
+<h2>Műszak hozzáadása</h2>
 
-  {% for role in roles %}
-    {{ role }}:
-    <input type="number" name="{{ role }}" min="0" value="0"><br>
-  {% endfor %}
+<form method="post" onsubmit="prepareCounts()">
+    <label>Előadás neve:</label><br>
+    <input name="show" required><br><br>
 
-  <br>
-  <button type="submit">Műszak hozzáadása</button>
+    <label>Időpont:</label><br>
+    <input type="datetime-local" name="datetime" required><br><br>
+
+    <h3>Munkakörök</h3>
+
+    {% for role in roles %}
+        <div class="role-block">
+            <b>{{ role }}</b><br>
+
+            <div class="boxes">
+                {% for i in range(10) %}
+                    <input type="checkbox"
+                           class="role-box"
+                           data-role="{{ role }}">
+                {% endfor %}
+            </div>
+
+            <!-- ide írjuk majd be a darabszámot JS-ből -->
+            <input type="hidden" name="{{ role }}" value="0">
+        </div>
+    {% endfor %}
+
+    <br>
+    <button type="submit">Műszak hozzáadása</button>
 </form>
 
 <hr>
 
 <h3>Felvett műszakok ({{ shifts|length }} db)</h3>
 
-{% if shifts|length == 0 %}
-  <p>❗ Még nincs műszak felvéve</p>
-{% endif %}
-
 <ul>
 {% for s in shifts %}
-  <li>
-    {{ s.show }} – {{ s.datetime }}<br>
-    {{ s.roles }}
-  </li>
+    <li>
+        {{ s.show }} – {{ s.datetime }}<br>
+        {{ s.roles }}
+    </li>
 {% endfor %}
 </ul>
 
 <br>
 <a href="/workers">→ Tovább az emberekhez</a>
+
+<script>
+function prepareCounts() {
+    const roles = {};
+
+    document.querySelectorAll(".role-box").forEach(box => {
+        const role = box.dataset.role;
+        if (!(role in roles)) {
+            roles[role] = 0;
+        }
+        if (box.checked) {
+            roles[role]++;
+        }
+    });
+
+    for (const role in roles) {
+        const hidden = document.querySelector(
+            'input[type="hidden"][name="' + role + '"]'
+        );
+        if (hidden) {
+            hidden.value = roles[role];
+        }
+    }
+}
+</script>
+
+</body>
+</html>
