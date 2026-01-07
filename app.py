@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, session, send_file
 from datetime import datetime, time
 from io import BytesIO
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 # ======================================================
 # SEGÉDFÜGGVÉNYEK
@@ -34,7 +34,6 @@ def parse_unavailability(text):
             start = datetime.combine(d, datetime.strptime(start_t, "%H:%M").time())
             end = datetime.combine(d, datetime.strptime(end_t, "%H:%M").time())
             periods.append((start, end))
-
     return periods
 
 
@@ -62,6 +61,17 @@ def already_worked_that_day(worker_name, shift, assignments):
 app = Flask(__name__)
 app.secret_key = "titkos_jelszo"
 
+SHIFTS = []
+WORKERS = []
+
+ROLES = [
+    "Nézőtér beülős",
+    "Nézőtér csak csipog",
+    "Jolly joker",
+    "Ruhatár bal",
+    "Ruhatár jobb",
+    "Ruhatár erkély"
+]
 
 # ======================================================
 # LOGIN
@@ -83,23 +93,6 @@ def login_required(fn):
         return fn(*args, **kwargs)
     wrapper.__name__ = fn.__name__
     return wrapper
-
-
-# ======================================================
-# ADATOK
-# ======================================================
-
-SHIFTS = []
-WORKERS = []
-
-ROLES = [
-    "Nézőtér beülős",
-    "Nézőtér csak csipog",
-    "Jolly joker",
-    "Ruhatár bal",
-    "Ruhatár jobb",
-    "Ruhatár erkély"
-]
 
 
 # ======================================================
@@ -150,18 +143,17 @@ def workers():
 
 
 # ======================================================
-# BEOSZTÓ LOGIKA (DUPLÁZÁS TILTÁSA)
+# BEOSZTÓ LOGIKA
 # ======================================================
 
 def generate_schedule(shifts, workers):
     assignments = []
-
     work_count = {w["name"]: 0 for w in workers}
     role_history = {w["name"]: [] for w in workers}
 
     for shift in shifts:
         assigned = {}
-        used_in_shift = set()   # 🔴 EZ AZ ÚJ KULCS
+        used_in_shift = set()
         ek_used = False
 
         for role, needed in shift["roles"].items():
@@ -172,27 +164,21 @@ def generate_schedule(shifts, workers):
 
                 for w in workers:
                     name = w["name"]
-
                     if name in used_in_shift:
                         continue
-
                     if not is_available(w, shift["datetime"]):
                         continue
-
                     if already_worked_that_day(name, shift, assignments):
                         continue
-
                     if w["is_ek"] and (ek_used or role == "Jolly joker"):
                         continue
-
                     candidates.append(w)
 
                 if not candidates:
-                    break  # ❗ maradjon üres
+                    break
 
                 def score(w):
-                    s = 0
-                    s += work_count[w["name"]] * 3
+                    s = work_count[w["name"]] * 3
                     s += role_history[w["name"]].count(role) * 2
                     if w["is_ek"]:
                         s += 8
@@ -201,12 +187,10 @@ def generate_schedule(shifts, workers):
                     return s
 
                 chosen = min(candidates, key=score)
-
                 assigned[role].append(chosen["name"])
                 used_in_shift.add(chosen["name"])
                 work_count[chosen["name"]] += 1
                 role_history[chosen["name"]].append(role)
-
                 if chosen["is_ek"]:
                     ek_used = True
 
@@ -231,7 +215,7 @@ def generate():
 
 
 # ======================================================
-# EXPORT – EXCEL
+# EXPORT
 # ======================================================
 
 @app.route("/export")
@@ -242,14 +226,7 @@ def export_excel():
     wb = Workbook()
     ws = wb.active
     ws.title = "Beosztás"
-
-    ws.append([
-        "Dátum",
-        "Előadás",
-        "Munkakör",
-        "Név",
-        "ÉK"
-    ])
+    ws.append(["Dátum", "Előadás", "Munkakör", "Név", "ÉK"])
 
     for shift in result:
         for role, names in shift["assigned"].items():
@@ -273,3 +250,47 @@ def export_excel():
         download_name="nezoter_beosztas.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+
+# ======================================================
+# IMPORT
+# ======================================================
+
+@app.route("/import", methods=["GET", "POST"])
+@login_required
+def import_excel():
+    global SHIFTS, WORKERS
+
+    if request.method == "POST":
+        file = request.files["file"]
+        wb = load_workbook(file)
+
+        # ---- WORKERS ----
+        WORKERS.clear()
+        ws_w = wb["WORKERS"]
+        for row in ws_w.iter_rows(min_row=2, values_only=True):
+            name, preferred, is_ek, unavailable = row
+            WORKERS.append({
+                "name": name,
+                "preferred": preferred,
+                "is_ek": is_ek == "IGEN",
+                "unavailable_raw": unavailable,
+                "unavailable_parsed": parse_unavailability(unavailable)
+            })
+
+        # ---- SHIFTS ----
+        SHIFTS.clear()
+        ws_s = wb["SHIFTS"]
+        temp = {}
+
+        for show, dt, role, count in ws_s.iter_rows(min_row=2, values_only=True):
+            key = (show, dt)
+            if key not in temp:
+                temp[key] = {"show": show, "datetime": dt, "roles": {}}
+            temp[key]["roles"][role] = count
+
+        SHIFTS.extend(temp.values())
+
+        return redirect("/generate")
+
+    return render_template("import.html")
