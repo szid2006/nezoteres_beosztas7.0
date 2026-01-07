@@ -1,9 +1,55 @@
 from flask import Flask, render_template, request, redirect, session
+from datetime import datetime, time
 
-# ================= SEGÉDFÜGGVÉNYEK =================
+# ======================================================
+# SEGÉDFÜGGVÉNYEK – DÁTUM, ELÉRHETŐSÉG
+# ======================================================
 
 def same_day(dt1, dt2):
     return dt1.split("T")[0] == dt2.split("T")[0]
+
+
+def parse_unavailability(text):
+    """
+    Többsoros szöveget feldolgoz.
+    Formátum:
+      2026-02-03
+      2026-02-05 17:00-21:00
+    """
+    periods = []
+
+    if not text:
+        return periods
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        # egész nap
+        if len(line) == 10:
+            d = datetime.strptime(line, "%Y-%m-%d").date()
+            periods.append((
+                datetime.combine(d, time(0, 0)),
+                datetime.combine(d, time(23, 59))
+            ))
+        else:
+            date_part, time_part = line.split()
+            start_t, end_t = time_part.split("-")
+            d = datetime.strptime(date_part, "%Y-%m-%d").date()
+            start = datetime.combine(d, datetime.strptime(start_t, "%H:%M").time())
+            end = datetime.combine(d, datetime.strptime(end_t, "%H:%M").time())
+            periods.append((start, end))
+
+    return periods
+
+
+def is_available(worker, shift_datetime):
+    shift_dt = datetime.strptime(shift_datetime, "%Y-%m-%dT%H:%M")
+    for start, end in worker["unavailable_parsed"]:
+        if start <= shift_dt <= end:
+            return False
+    return True
 
 
 def already_worked_that_day(worker_name, shift, assignments):
@@ -15,21 +61,22 @@ def already_worked_that_day(worker_name, shift, assignments):
     return False
 
 
-# ================= FLASK APP =================
+# ======================================================
+# FLASK APP
+# ======================================================
 
 app = Flask(__name__)
 app.secret_key = "titkos_jelszo"
 
 
-# ================= LOGIN =================
+# ======================================================
+# LOGIN
+# ======================================================
 
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if (
-            request.form.get("username") == "admin"
-            and request.form.get("password") == "1234"
-        ):
+        if request.form.get("username") == "admin" and request.form.get("password") == "1234":
             session["logged_in"] = True
             return redirect("/shifts")
     return render_template("login.html")
@@ -44,7 +91,9 @@ def login_required(fn):
     return wrapper
 
 
-# ================= ADATOK =================
+# ======================================================
+# ADATOK
+# ======================================================
 
 SHIFTS = []
 WORKERS = []
@@ -59,7 +108,9 @@ ROLES = [
 ]
 
 
-# ================= SHIFTS =================
+# ======================================================
+# SHIFTS – 10 NÉGYZETES UI
+# ======================================================
 
 @app.route("/shifts", methods=["GET", "POST"])
 @login_required
@@ -83,23 +134,30 @@ def shifts():
     return render_template("shifts.html", roles=ROLES, shifts=SHIFTS)
 
 
-# ================= WORKERS =================
+# ======================================================
+# WORKERS – ELÉRHETŐSÉGGEL
+# ======================================================
 
 @app.route("/workers", methods=["GET", "POST"])
 @login_required
 def workers():
     if request.method == "POST":
+        raw_unavailable = request.form.get("unavailable")
+
         WORKERS.append({
             "name": request.form.get("name"),
             "preferred": request.form.get("preferred"),
             "is_ek": "is_ek" in request.form,
-            "unavailable": request.form.get("unavailable")
+            "unavailable_raw": raw_unavailable,
+            "unavailable_parsed": parse_unavailability(raw_unavailable)
         })
 
     return render_template("workers.html", workers=WORKERS)
 
 
-# ================= BEOSZTÓ LOGIKA =================
+# ======================================================
+# BEOSZTÓ LOGIKA – FINOMÍTOTT
+# ======================================================
 
 def generate_schedule(shifts, workers):
     assignments = []
@@ -120,38 +178,28 @@ def generate_schedule(shifts, workers):
                 for w in workers:
                     name = w["name"]
 
-                    # napi duplázás tiltás
+                    if not is_available(w, shift["datetime"]):
+                        continue
+
                     if already_worked_that_day(name, shift, assignments):
                         continue
 
-                    # ÉK szabályok
-                    if w["is_ek"]:
-                        if ek_used or role == "Jolly joker":
-                            continue
+                    if w["is_ek"] and (ek_used or role == "Jolly joker"):
+                        continue
 
                     candidates.append(w)
 
-                # okos explained fallback: inkább legyen ember
                 if not candidates:
                     candidates = workers.copy()
 
                 def score(w):
                     s = 0
-
-                    # igazságosság
                     s += work_count[w["name"]] * 3
-
-                    # rotáció
                     s += role_history[w["name"]].count(role) * 2
-
-                    # ÉK erősebben hátrébb
                     if w["is_ek"]:
                         s += 8
-
-                    # preferencia
                     if w["preferred"] == shift["show"] and role == "Nézőtér beülős":
                         s -= 12
-
                     return s
 
                 chosen = min(candidates, key=score)
@@ -172,7 +220,9 @@ def generate_schedule(shifts, workers):
     return assignments
 
 
-# ================= GENERATE ROUTE =================
+# ======================================================
+# GENERATE
+# ======================================================
 
 @app.route("/generate")
 @login_required
