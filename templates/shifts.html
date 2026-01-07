@@ -88,6 +88,15 @@ function prepareCounts() {
         }
     }
 }
+    <hr>
+
+<h3>Excel import</h3>
+
+<form method="post" action="/import" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".xlsx" required>
+    <button type="submit">📥 Import Excelből</button>
+</form>
+
 </script>
 
 </body>
