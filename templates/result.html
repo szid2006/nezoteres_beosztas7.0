@@ -1,5 +1,19 @@
 <h2>Beosztás</h2>
 
+<p><b>Műszakok száma:</b> {{ result|length }}</p>
+
+{% if result|length == 0 %}
+  <p style="color:red;">
+    ❌ Nincs mit beosztani.<br>
+    Ellenőrizd, hogy:
+    <ul>
+      <li>van-e felvett műszak</li>
+      <li>van-e felvett ember</li>
+      <li>a műszaknál be van-e jelölve legalább 1 munkakör</li>
+    </ul>
+  </p>
+{% endif %}
+
 {% for r in result %}
   <h3>{{ r.show }} – {{ r.datetime }}</h3>
   <ul>
