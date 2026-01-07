@@ -120,25 +120,38 @@ def generate_schedule(shifts, workers):
                 for w in workers:
                     name = w["name"]
 
+                    # napi duplázás tiltás
                     if already_worked_that_day(name, shift, assignments):
                         continue
 
+                    # ÉK szabályok
                     if w["is_ek"]:
                         if ek_used or role == "Jolly joker":
                             continue
 
                     candidates.append(w)
 
+                # okos explained fallback: inkább legyen ember
                 if not candidates:
-                    continue
+                    candidates = workers.copy()
 
                 def score(w):
-                    s = work_count[w["name"]] * 2
-                    s += role_history[w["name"]].count(role)
+                    s = 0
+
+                    # igazságosság
+                    s += work_count[w["name"]] * 3
+
+                    # rotáció
+                    s += role_history[w["name"]].count(role) * 2
+
+                    # ÉK erősebben hátrébb
                     if w["is_ek"]:
-                        s += 5
+                        s += 8
+
+                    # preferencia
                     if w["preferred"] == shift["show"] and role == "Nézőtér beülős":
-                        s -= 10
+                        s -= 12
+
                     return s
 
                 chosen = min(candidates, key=score)
