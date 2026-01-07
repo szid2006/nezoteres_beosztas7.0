@@ -1,8 +1,10 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, send_file
 from datetime import datetime, time
+from io import BytesIO
+from openpyxl import Workbook
 
 # ======================================================
-# SEGÉDFÜGGVÉNYEK – DÁTUM, ELÉRHETŐSÉG
+# SEGÉDFÜGGVÉNYEK
 # ======================================================
 
 def same_day(dt1, dt2):
@@ -10,14 +12,7 @@ def same_day(dt1, dt2):
 
 
 def parse_unavailability(text):
-    """
-    Többsoros szöveget feldolgoz.
-    Formátum:
-      2026-02-03
-      2026-02-05 17:00-21:00
-    """
     periods = []
-
     if not text:
         return periods
 
@@ -26,7 +21,6 @@ def parse_unavailability(text):
         if not line:
             continue
 
-        # egész nap
         if len(line) == 10:
             d = datetime.strptime(line, "%Y-%m-%d").date()
             periods.append((
@@ -109,7 +103,7 @@ ROLES = [
 
 
 # ======================================================
-# SHIFTS – 10 NÉGYZETES UI
+# SHIFTS
 # ======================================================
 
 @app.route("/shifts", methods=["GET", "POST"])
@@ -135,7 +129,7 @@ def shifts():
 
 
 # ======================================================
-# WORKERS – ELÉRHETŐSÉGGEL
+# WORKERS
 # ======================================================
 
 @app.route("/workers", methods=["GET", "POST"])
@@ -156,7 +150,7 @@ def workers():
 
 
 # ======================================================
-# BEOSZTÓ LOGIKA – FINOMÍTOTT
+# BEOSZTÓ LOGIKA (DUPLÁZÁS TILTÁSA)
 # ======================================================
 
 def generate_schedule(shifts, workers):
@@ -167,6 +161,7 @@ def generate_schedule(shifts, workers):
 
     for shift in shifts:
         assigned = {}
+        used_in_shift = set()   # 🔴 EZ AZ ÚJ KULCS
         ek_used = False
 
         for role, needed in shift["roles"].items():
@@ -177,6 +172,9 @@ def generate_schedule(shifts, workers):
 
                 for w in workers:
                     name = w["name"]
+
+                    if name in used_in_shift:
+                        continue
 
                     if not is_available(w, shift["datetime"]):
                         continue
@@ -190,7 +188,7 @@ def generate_schedule(shifts, workers):
                     candidates.append(w)
 
                 if not candidates:
-                    candidates = workers.copy()
+                    break  # ❗ maradjon üres
 
                 def score(w):
                     s = 0
@@ -205,6 +203,7 @@ def generate_schedule(shifts, workers):
                 chosen = min(candidates, key=score)
 
                 assigned[role].append(chosen["name"])
+                used_in_shift.add(chosen["name"])
                 work_count[chosen["name"]] += 1
                 role_history[chosen["name"]].append(role)
 
@@ -220,12 +219,4 @@ def generate_schedule(shifts, workers):
     return assignments
 
 
-# ======================================================
-# GENERATE
-# ======================================================
-
-@app.route("/generate")
-@login_required
-def generate():
-    result = generate_schedule(SHIFTS, WORKERS)
-    return render_template("result.html", result=result)
+# =================================
