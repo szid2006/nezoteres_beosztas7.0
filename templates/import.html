@@ -1,24 +1,8 @@
-<h2>Adatok importálása Excelből / Google Sheetsből</h2>
+<h2>Excel / Google Sheets import</h2>
 
-<p>
-Egyetlen <b>.xlsx</b> fájlt tölts fel, amelyben:
-<ul>
-  <li><b>WORKERS</b> munkalap – emberek</li>
-  <li><b>SHIFTS</b> munkalap – műszakok</li>
-</ul>
-</p>
+<p>1 fájl, 2 munkalap: <b>WORKERS</b>, <b>SHIFTS</b></p>
 
-<p style="color:#888; font-size:0.9em;">
-⚠ Az import <b>felülírja</b> a jelenlegi műszakokat és embereket.
-</p>
-
-<form method="post" action="/import" enctype="multipart/form-data">
+<form method="post" enctype="multipart/form-data">
     <input type="file" name="file" accept=".xlsx" required>
-    <br><br>
-    <button type="submit">📥 Importálás</button>
+    <button>📥 Import</button>
 </form>
-
-<hr>
-
-<a href="/shifts">⬅ vissza a műszakokhoz</a> |
-<a href="/workers">⬅ vissza az emberekhez</a>
