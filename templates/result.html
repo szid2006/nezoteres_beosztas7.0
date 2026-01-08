@@ -1,45 +1,13 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Beosztás</title>
-</head>
-<body>
-
 <h2>Beosztás</h2>
 
-<p><b>Generált műszakok száma:</b> {{ result|length }}</p>
-
-{% if result|length == 0 %}
-    <p style="color:red;">❌ Nincs mit megjeleníteni</p>
-{% endif %}
-
 {% for r in result %}
-    <hr>
-    <h3>{{ r.show }} – {{ r.datetime }}</h3>
-
-    <ul>
-        {% for role, names in r.assigned.items() %}
-            <li>
-                <b>{{ role }}</b>:
-                {% if names %}
-                    {{ names | join(", ") }}
-                {% else %}
-                    ❌ nincs beosztva
-                {% endif %}
-            </li>
-        {% endfor %}
-    </ul>
+  <h3>{{ r.show }} – {{ r.datetime }}</h3>
+  <ul>
+  {% for role, names in r.assigned.items() %}
+    <li><b>{{ role }}</b>: {{ names | join(", ") }}</li>
+  {% endfor %}
+  </ul>
 {% endfor %}
 
-<br>
-<a href="/shifts">← Vissza műszakokhoz</a>
 <hr>
-
-<a href="/export">
-    📥 Beosztás letöltése Excelben
-</a>
-
-
-</body>
-</html>
+<a href="/export">📤 Export Excelbe</a>
