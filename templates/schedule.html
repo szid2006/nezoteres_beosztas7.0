@@ -6,17 +6,27 @@
 </head>
 <body>
 
-<h1>Automatikus beosztás</h1>
+<h1>Nézőtéri beosztás</h1>
 
 {% for item in schedule %}
     <h3>{{ item.cím }} – {{ item.dátum }}</h3>
-    <ul>
-        {% for d in item.dolgozók %}
-            <li>{{ d }}</li>
-        {% endfor %}
-    </ul>
+
+    {% if item.hiba %}
+        <p style="color:red;">⚠️ {{ item.hiba }}</p>
+    {% else %}
+        <strong>{{ item.szerep }}</strong>
+        {% if item.kiosztott|length < item.kért %}
+            <span style="color:red;">
+                ({{ item.kiosztott|length }}/{{ item.kért }})
+            </span>
+        {% endif %}
+        <ul>
+            {% for d in item.kiosztott %}
+                <li>{{ d }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
 {% endfor %}
 
 </body>
 </html>
- 
