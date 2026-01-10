@@ -6,10 +6,9 @@ from openpyxl import load_workbook, Workbook
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import math, random, tempfile
-from functools import wraps
 
 app = Flask(__name__)
-app.secret_key = "nagyon_titkos_kulcs"  # Renderen ENV-be tedd
+app.secret_key = "nagyon_titkos_kulcs"
 
 # =====================================================
 # FELHASZNÁLÓK
@@ -26,13 +25,14 @@ USERS = {
 }
 
 # =====================================================
-# BETONBIZTOS AUTH VÉDELEM
+# 🔐 BETONBIZTOS GLOBÁLIS AUTH
 # =====================================================
 @app.before_request
 def force_login():
-    allowed = {"login", "static"}
-    if request.endpoint not in allowed and "user" not in session:
-        return redirect(url_for("login"))
+    public_paths = ["/login", "/static"]
+    if not any(request.path.startswith(p) for p in public_paths):
+        if "user" not in session:
+            return redirect(url_for("login"))
 
 # =====================================================
 # ADATOK
@@ -157,7 +157,6 @@ def generate_schedule():
         ek_used = False
         assigned_roles = {r: [] for r in rules}
 
-        # ===== BEÜLŐS – NÉZŐS ELSŐBBSÉG =====
         for w in random.sample(workers, len(workers)):
             if len(assigned_roles["nézőtér beülős"]) >= rules["nézőtér beülős"]:
                 break
@@ -177,38 +176,10 @@ def generate_schedule():
             if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # ===== BEÜLŐS FELTÖLTÉS =====
-        while len(assigned_roles["nézőtér beülős"]) < rules["nézőtér beülős"]:
-            eligible = []
-            for w in workers:
-                if w["név"] in used:
-                    continue
-                if w.get("ÉK") == "igen" and ek_used:
-                    continue
-                if show_date in normalize_list(w.get("nem_ér_rá")):
-                    continue
-                eligible.append(w)
-
-            if not eligible:
-                break
-
-            chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
-            assigned_roles["nézőtér beülős"].append({
-                "név": chosen["név"],
-                "watched": False
-            })
-            used.add(chosen["név"])
-            assignment_count[chosen["név"]] += 1
-            if chosen.get("ÉK") == "igen":
-                ek_used = True
-
-        # ===== TÖBBI SZEREP =====
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
-
             while len(assigned_roles[role]) < needed:
-                eligible = []
                 for w in workers:
                     if w["név"] in used:
                         continue
@@ -218,20 +189,16 @@ def generate_schedule():
                         continue
                     if show_date in normalize_list(w.get("nem_ér_rá")):
                         continue
-                    eligible.append(w)
 
-                if not eligible:
+                    assigned_roles[role].append({
+                        "név": w["név"],
+                        "watched": False
+                    })
+                    used.add(w["név"])
+                    assignment_count[w["név"]] += 1
+                    if w.get("ÉK") == "igen":
+                        ek_used = True
                     break
-
-                chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
-                assigned_roles[role].append({
-                    "név": chosen["név"],
-                    "watched": False
-                })
-                used.add(chosen["név"])
-                assignment_count[chosen["név"]] += 1
-                if chosen.get("ÉK") == "igen":
-                    ek_used = True
 
         for role in rules:
             show_block["szerepek"].append({
@@ -270,7 +237,7 @@ def stats():
     return render_template("stats.html", stats=stats)
 
 # =====================================================
-# EXCEL EXPORT
+# EXPORT
 # =====================================================
 @app.route("/export/xlsx")
 def export_xlsx():
@@ -309,8 +276,5 @@ def export_xlsx():
 
     return send_file(tmp.name, as_attachment=True, download_name="beosztas.xlsx")
 
-# =====================================================
-# FUTTATÁS
-# =====================================================
 if __name__ == "__main__":
     app.run(debug=True)
