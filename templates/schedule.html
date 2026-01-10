@@ -24,7 +24,11 @@
             {% endif %}
             <ul>
                 {% for d in s.kiosztott %}
-                    <li>{{ d }}</li>
+                    {% set w = workers | selectattr("név", "equalto", d) | first %}
+                    <li style="{% if w and w.ÉK == 'igen' %}color:red;{% endif %}">
+                        {{ d }}
+                        {% if w and w.ÉK == 'igen' %}(ÉK){% endif %}
+                    </li>
                 {% endfor %}
             </ul>
         {% endfor %}
