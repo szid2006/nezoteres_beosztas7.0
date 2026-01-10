@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for
 import csv, io
 from openpyxl import load_workbook
 from datetime import datetime
+import math
 
 app = Flask(__name__)
 
@@ -29,7 +30,19 @@ ROLE_RULES = {
 }
 
 
-# ---------- IMPORT SEGÉD ----------
+# --------- SEGÉD ---------
+def normalize_date(value):
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    return str(value)[:10]
+
+
+def normalize_list(value):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return []
+    return [v.strip() for v in str(value).split(",") if v.strip()]
+
+
 def import_file(file):
     filename = file.filename.lower()
     rows = []
@@ -49,7 +62,7 @@ def import_file(file):
     return rows
 
 
-# ---------- OLDALAK ----------
+# --------- OLDALAK ---------
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -73,7 +86,7 @@ def import_shows():
     return redirect(url_for("generate_schedule"))
 
 
-# ---------- BEOSZTÁS ----------
+# --------- BEOSZTÁS ---------
 @app.route("/schedule")
 def generate_schedule():
     global schedule
@@ -83,12 +96,7 @@ def generate_schedule():
         total = int(show["létszám"])
         rules = ROLE_RULES.get(total)
 
-        # dátum NORMALIZÁLÁS (EZ JAVÍTJA A 500-AT)
-        if isinstance(show["dátum"], datetime):
-            show_date = show["dátum"].strftime("%Y-%m-%d")
-        else:
-            show_date = str(show["dátum"])[:10]
-
+        show_date = normalize_date(show["dátum"])
         show_title = show["cím"]
 
         show_block = {
@@ -104,12 +112,13 @@ def generate_schedule():
             continue
 
         used = set()
-        ek_used = False  # max 1 ÉK / előadás
+        ek_used = False
 
         for role, needed in rules.items():
             assigned = []
-            candidates = []
 
+            # ---------- 1️⃣ HARD FILTER ----------
+            eligible = []
             for w in workers:
                 name = w["név"]
                 is_ek = (w.get("ÉK") == "igen")
@@ -123,33 +132,28 @@ def generate_schedule():
                 if role == "jolly joker" and is_ek:
                     continue
 
-                # nem ér rá
-                if w.get("nem_ér_rá"):
-                    dates = [d.strip() for d in str(w["nem_ér_rá"]).split(",")]
-                    if show_date in dates:
-                        continue
+                if show_date in normalize_list(w.get("nem_ér_rá")):
+                    continue
 
-                # nézni akarja
-                if w.get("nézni_akar"):
-                    wanted = [s.strip() for s in str(w["nézni_akar"]).split(",")]
-                    if show_title in wanted:
-                        continue
+                if show_title in normalize_list(w.get("nézni_akar")):
+                    continue
 
-                candidates.append({
+                eligible.append({
                     "név": name,
                     "ÉK": is_ek,
                     "count": assignment_count[name]
                 })
 
-            # ROTÁCIÓ + ÉK HÁTRÁNY
-            candidates.sort(
+            # ---------- 2️⃣ FAIR SORT ----------
+            eligible.sort(
                 key=lambda x: (
-                    x["count"],
-                    1 if x["ÉK"] else 0
+                    x["count"],          # kevesebb beosztás előny
+                    1 if x["ÉK"] else 0  # ÉK hátrány
                 )
             )
 
-            for c in candidates:
+            # ---------- KIOSZTÁS ----------
+            for c in eligible:
                 if len(assigned) == needed:
                     break
 
