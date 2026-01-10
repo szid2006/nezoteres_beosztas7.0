@@ -178,6 +178,32 @@ def generate_schedule():
             assignment_count[w["név"]] += 1
             if w.get("ÉK") == "igen":
                 ek_used = True
+            # ===== BEÜLŐS FELTÖLTÉS, HA NINCS ELÉG NÉZŐS =====
+while len(assigned_roles["nézőtér beülős"]) < rules["nézőtér beülős"]:
+    eligible = []
+    for w in workers:
+        if w["név"] in used:
+            continue
+        if show_date in normalize_list(w.get("nem_ér_rá")):
+            continue
+        if w.get("ÉK") == "igen" and ek_used:
+            continue
+
+        eligible.append(w)
+
+    if not eligible:
+        break
+
+    chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
+    assigned_roles["nézőtér beülős"].append({
+        "név": chosen["név"],
+        "watched": False
+    })
+    used.add(chosen["név"])
+    assignment_count[chosen["név"]] += 1
+    if chosen.get("ÉK") == "igen":
+        ek_used = True
+
 
         for role, needed in rules.items():
             if role == "nézőtér beülős":
