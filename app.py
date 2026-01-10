@@ -5,7 +5,6 @@ import csv, io, math, random
 
 app = Flask(__name__)
 
-# ================== ADATOK ==================
 workers = []
 shows = []
 schedule = []
@@ -29,7 +28,7 @@ ROLE_RULES = {
     }
 }
 
-# ================== SEGÉDEK ==================
+# ---------- SEGÉDEK ----------
 def normalize_date(value):
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
@@ -42,8 +41,8 @@ def normalize_list(value):
         return []
     if isinstance(value, float) and math.isnan(value):
         return []
-    text = str(value).strip()
-    if text.lower() in ("", "none", "nan"):
+    text = str(value).strip().lower()
+    if text in ("", "none", "nan"):
         return []
     return [v.strip() for v in text.split(",") if v.strip()]
 
@@ -64,7 +63,7 @@ def import_file(file):
 
     return rows
 
-# ================== ROUTES ==================
+# ---------- ROUTES ----------
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -108,12 +107,12 @@ def generate_schedule():
             continue
 
         used = set()
-        ek_used = False  # 🔒 MAX 1 ÉK / ELŐADÁS
+        ek_used = False  # 🔒 GLOBÁLIS, ELŐADÁS SZINTŰ ÉK LOCK
 
         for role, needed in rules.items():
             assigned = []
 
-            # -------- HARD FILTER --------
+            # HARD FILTER
             eligible = []
             for w in workers:
                 name = w["név"]
@@ -136,7 +135,7 @@ def generate_schedule():
                     "count": assignment_count[name]
                 })
 
-            # -------- SÚLYOZOTT RANDOM --------
+            # SÚLYOZOTT RANDOM + ÉK KIZÁRÁS AZONNAL
             for _ in range(needed):
                 if not eligible:
                     break
@@ -152,10 +151,13 @@ def generate_schedule():
                 used.add(chosen["név"])
                 assignment_count[chosen["név"]] += 1
 
+                # 🔴 KRITIKUS RÉSZ
                 if chosen["ÉK"]:
                     ek_used = True
-
-                eligible = [c for c in eligible if c["név"] != chosen["név"]]
+                    # AZONNAL töröljük az összes többi ÉK-t
+                    eligible = [c for c in eligible if not c["ÉK"]]
+                else:
+                    eligible = [c for c in eligible if c["név"] != chosen["név"]]
 
             show_block["szerepek"].append({
                 "szerep": role,
