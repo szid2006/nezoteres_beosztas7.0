@@ -1,10 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for
-import csv, io, math
 from openpyxl import load_workbook
 from datetime import datetime
+import csv, io, math, random
 
 app = Flask(__name__)
 
+# ================== ADATOK ==================
 workers = []
 shows = []
 schedule = []
@@ -28,14 +29,13 @@ ROLE_RULES = {
     }
 }
 
-
+# ================== SEGÉDEK ==================
 def normalize_date(value):
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
     if value is None:
         return ""
     return str(value)[:10]
-
 
 def normalize_list(value):
     if value is None:
@@ -46,7 +46,6 @@ def normalize_list(value):
     if text.lower() in ("", "none", "nan"):
         return []
     return [v.strip() for v in text.split(",") if v.strip()]
-
 
 def import_file(file):
     filename = file.filename.lower()
@@ -60,17 +59,15 @@ def import_file(file):
         wb = load_workbook(file, data_only=True)
         ws = wb.active
         headers = [cell.value for cell in ws[1]]
-
         for row in ws.iter_rows(min_row=2, values_only=True):
             rows.append(dict(zip(headers, row)))
 
     return rows
 
-
+# ================== ROUTES ==================
 @app.route("/")
 def index():
     return render_template("import.html")
-
 
 @app.route("/import/workers", methods=["POST"])
 def import_workers():
@@ -80,13 +77,11 @@ def import_workers():
         assignment_count.setdefault(w["név"], 0)
     return redirect(url_for("index"))
 
-
 @app.route("/import/shows", methods=["POST"])
 def import_shows():
     global shows
     shows = import_file(request.files["file"])
     return redirect(url_for("generate_schedule"))
-
 
 @app.route("/schedule")
 def generate_schedule():
@@ -113,15 +108,16 @@ def generate_schedule():
             continue
 
         used = set()
-        ek_used = False
+        ek_used = False  # 🔒 MAX 1 ÉK / ELŐADÁS
 
         for role, needed in rules.items():
             assigned = []
 
+            # -------- HARD FILTER --------
             eligible = []
             for w in workers:
                 name = w["név"]
-                is_ek = (str(w.get("ÉK")).lower() == "igen")
+                is_ek = str(w.get("ÉK")).lower() == "igen"
 
                 if name in used:
                     continue
@@ -140,21 +136,26 @@ def generate_schedule():
                     "count": assignment_count[name]
                 })
 
-            eligible.sort(
-                key=lambda x: (
-                    x["count"],
-                    1 if x["ÉK"] else 0
-                )
-            )
-
-            for c in eligible:
-                if len(assigned) == needed:
+            # -------- SÚLYOZOTT RANDOM --------
+            for _ in range(needed):
+                if not eligible:
                     break
-                assigned.append(c["név"])
-                used.add(c["név"])
-                assignment_count[c["név"]] += 1
-                if c["ÉK"]:
+
+                weights = [
+                    (1 / (c["count"] + 1)) * (0.3 if c["ÉK"] else 1.0)
+                    for c in eligible
+                ]
+
+                chosen = random.choices(eligible, weights=weights, k=1)[0]
+
+                assigned.append(chosen["név"])
+                used.add(chosen["név"])
+                assignment_count[chosen["név"]] += 1
+
+                if chosen["ÉK"]:
                     ek_used = True
+
+                eligible = [c for c in eligible if c["név"] != chosen["név"]]
 
             show_block["szerepek"].append({
                 "szerep": role,
@@ -165,7 +166,6 @@ def generate_schedule():
         schedule.append(show_block)
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
-
 
 if __name__ == "__main__":
     app.run(debug=True)
