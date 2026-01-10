@@ -219,14 +219,39 @@ def generate_schedule():
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
 
-# ================== EXCEL EXPORT (ÚJ FORMÁTUM) ==================
+# ================== STATISZTIKA ==================
+@app.route("/stats")
+def stats():
+    stats = {}
+
+    for w in workers:
+        stats[w["név"]] = {
+            "összes": 0,
+            "beülős": 0,
+            "nézős": 0,
+            "ÉK": (w.get("ÉK") == "igen")
+        }
+
+    for show in schedule:
+        for s in show["szerepek"]:
+            role = s["szerep"]
+            for d in s["kiosztott"]:
+                name = d["név"]
+                stats[name]["összes"] += 1
+                if role == "nézőtér beülős":
+                    stats[name]["beülős"] += 1
+                if d.get("watched"):
+                    stats[name]["nézős"] += 1
+
+    return render_template("stats.html", stats=stats)
+
+# ================== EXCEL EXPORT ==================
 @app.route("/export/xlsx")
 def export_xlsx():
     wb = Workbook()
     ws = wb.active
     ws.title = "BEOSZTÁS"
 
-    # összes szerepkör a fejlécbe
     all_roles = []
     for show in schedule:
         for s in show["szerepek"]:
