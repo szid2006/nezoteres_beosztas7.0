@@ -1,8 +1,18 @@
-<h2>Excel / Google Sheets import</h2>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Import</title>
+</head>
+<body>
 
-<p>1 fájl, 2 munkalap: <b>WORKERS</b>, <b>SHIFTS</b></p>
+<h2>Adatok importálása</h2>
 
-<form method="post" enctype="multipart/form-data">
-    <input type="file" name="file" accept=".xlsx" required>
-    <button>📥 Import</button>
+<form action="/import" method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,.xlsx" required>
+    <br><br>
+    <button type="submit">Import</button>
 </form>
+
+</body>
+</html>
