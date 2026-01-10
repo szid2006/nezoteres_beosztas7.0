@@ -4,28 +4,32 @@ from openpyxl import load_workbook
 
 app = Flask(__name__)
 
+# ===== ADATTÁROLÁS =====
 workers = []
 shows = []
 schedule = []
+assignment_count = {}
 
+# ===== SZABÁLYRENDSZER =====
 ROLE_RULES = {
     9: {
         "nézőtér beülős": 2,
         "nézőtér csipog": 2,
         "ruhatár bal": 2,
         "ruhatár jobb": 1,
-        "ruhatár erkély": 1
+        "ruhatár erkély": 1,
+        "jolly joker": 1
     },
     8: {
         "nézőtér beülős": 2,
         "nézőtér csipog": 2,
         "ruhatár bal": 2,
-        "ruhatár jobb": 1
+        "ruhatár jobb": 1,
+        "jolly joker": 1
     }
 }
 
-
-# ===== IMPORT =====
+# ===== IMPORT SEGÉD =====
 def import_file(file):
     filename = file.filename.lower()
     rows = []
@@ -45,6 +49,7 @@ def import_file(file):
     return rows
 
 
+# ===== OLDALAK =====
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -54,6 +59,10 @@ def index():
 def import_workers():
     global workers
     workers = import_file(request.files["file"])
+
+    for w in workers:
+        assignment_count.setdefault(w["név"], 0)
+
     return redirect(url_for("index"))
 
 
@@ -64,7 +73,7 @@ def import_shows():
     return redirect(url_for("generate_schedule"))
 
 
-# ===== BEOSZTÁS GENERÁLÁS =====
+# ===== BEOSZTÁS =====
 @app.route("/schedule")
 def generate_schedule():
     global schedule
@@ -86,16 +95,44 @@ def generate_schedule():
             schedule.append(show_block)
             continue
 
-        available_workers = [w["név"] for w in workers]
         used = set()
+        ek_used = False  # max 1 ÉK / előadás
 
         for role, needed in rules.items():
             assigned = []
 
-            for name in available_workers:
-                if name not in used and len(assigned) < needed:
-                    assigned.append(name)
-                    used.add(name)
+            candidates = []
+            for w in workers:
+                name = w["név"]
+                is_ek = (w.get("ÉK") == "igen")
+
+                if name in used:
+                    continue
+
+                # max 1 ÉK
+                if is_ek and ek_used:
+                    continue
+
+                # jolly joker nem lehet ÉK
+                if role == "jolly joker" and is_ek:
+                    continue
+
+                candidates.append(name)
+
+            # ritkábban beosztott előny
+            candidates.sort(key=lambda n: assignment_count[n])
+
+            for name in candidates:
+                if len(assigned) == needed:
+                    break
+
+                assigned.append(name)
+                used.add(name)
+                assignment_count[name] += 1
+
+                # ha ÉK-s került be
+                if next(w for w in workers if w["név"] == name).get("ÉK") == "igen":
+                    ek_used = True
 
             show_block["szerepek"].append({
                 "szerep": role,
@@ -106,3 +143,7 @@ def generate_schedule():
         schedule.append(show_block)
 
     return render_template("schedule.html", schedule=schedule)
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
