@@ -110,7 +110,10 @@ def logout():
 # =====================================================
 @app.route("/")
 def index():
+    if "user" not in session:
+        return redirect(url_for("login"))
     return render_template("import.html")
+
 
 @app.route("/import/workers", methods=["POST"])
 def import_workers():
