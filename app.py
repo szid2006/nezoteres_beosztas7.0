@@ -252,23 +252,53 @@ def export_xlsx():
     ws = wb.active
     ws.title = "BEOSZTÁS"
 
-    all_roles = []
-    for show in schedule:
-        for s in show["szerepek"]:
-            if s["szerep"] not in all_roles:
-                all_roles.append(s["szerep"])
-    all_roles.sort()
+    # FIX EXPORT SÉMA (OSZLOPFEJLÉC)
+    headers = [
+        "Előadás",
+        "Dátum",
+        "nézőtér beülős 1",
+        "nézőtér beülős 2",
+        "nézőtér csak csipog 1",
+        "nézőtér csak csipog 2",
+        "jolly joker",
+        "ruhatár bal 1",
+        "ruhatár bal 2",
+        "ruhatár jobb",
+        "ruhatár erkély"
+    ]
 
-    ws.append(["Előadás", "Dátum"] + all_roles)
+    ws.append(headers)
 
     for show in schedule:
         row = [show["cím"], show["dátum"]]
+
+        # szerepkör → névlista
         role_map = {
-            s["szerep"]: ", ".join(d["név"] for d in s["kiosztott"])
+            s["szerep"]: [d["név"] for d in s["kiosztott"]]
             for s in show["szerepek"]
         }
-        for role in all_roles:
-            row.append(role_map.get(role, ""))
+
+        # nézőtér beülős (2)
+        row.append(role_map.get("nézőtér beülős", [None, None])[0] or "")
+        row.append(role_map.get("nézőtér beülős", [None, None])[1] or "")
+
+        # nézőtér csak csipog (2)
+        row.append(role_map.get("nézőtér csipog", [None, None])[0] or "")
+        row.append(role_map.get("nézőtér csipog", [None, None])[1] or "")
+
+        # jolly joker (1)
+        row.append(role_map.get("jolly joker", [""])[0] or "")
+
+        # ruhatár bal (2)
+        row.append(role_map.get("ruhatár bal", [None, None])[0] or "")
+        row.append(role_map.get("ruhatár bal", [None, None])[1] or "")
+
+        # ruhatár jobb (1)
+        row.append(role_map.get("ruhatár jobb", [""])[0] or "")
+
+        # ruhatár erkély (1)
+        row.append(role_map.get("ruhatár erkély", [""])[0] or "")
+
         ws.append(row)
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
