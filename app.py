@@ -5,33 +5,34 @@ from flask import (
 from openpyxl import load_workbook, Workbook
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import math, random, tempfile
 from functools import wraps
-import csv, io, math, random, tempfile
 
 app = Flask(__name__)
 app.secret_key = "nagyon_titkos_kulcs"  # Renderen ENV-be tedd
 
 # =====================================================
-# FELHASZNÁLÓK (KÉSŐBB DB-RE CSERÉLHETŐ)
+# FELHASZNÁLÓK
 # =====================================================
 USERS = {
-    "Szidi": {
+    "admin": {
         "password": generate_password_hash("admin123"),
         "role": "admin"
     },
-    "Zsuzsi": {
-        "password": generate_password_hash("1234"),
+    "vezeto": {
+        "password": generate_password_hash("vezeto123"),
         "role": "user"
     }
 }
 
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if "user" not in session:
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated
+# =====================================================
+# BETONBIZTOS AUTH VÉDELEM
+# =====================================================
+@app.before_request
+def force_login():
+    allowed = {"login", "static"}
+    if request.endpoint not in allowed and "user" not in session:
+        return redirect(url_for("login"))
 
 # =====================================================
 # ADATOK
@@ -60,7 +61,7 @@ ROLE_RULES = {
 }
 
 # =====================================================
-# SEGÉDFÜGGVÉNYEK
+# SEGÉDEK
 # =====================================================
 def normalize_date(value):
     if isinstance(value, datetime):
@@ -73,10 +74,10 @@ def normalize_list(value):
     return [v.strip() for v in str(value).split(",") if v.strip()]
 
 def import_file(file):
-    rows = []
     wb = load_workbook(file, data_only=True)
     ws = wb.active
     headers = [c.value for c in ws[1]]
+    rows = []
     for row in ws.iter_rows(min_row=2, values_only=True):
         rows.append(dict(zip(headers, row)))
     return rows
@@ -108,12 +109,10 @@ def logout():
 # OLDALAK
 # =====================================================
 @app.route("/")
-@login_required
 def index():
     return render_template("import.html")
 
 @app.route("/import/workers", methods=["POST"])
-@login_required
 def import_workers():
     global workers
     workers = import_file(request.files["file"])
@@ -122,17 +121,15 @@ def import_workers():
     return redirect(url_for("index"))
 
 @app.route("/import/shows", methods=["POST"])
-@login_required
 def import_shows():
     global shows
     shows = import_file(request.files["file"])
     return redirect(url_for("generate_schedule"))
 
 # =====================================================
-# BEOSZTÁS GENERÁLÁS
+# BEOSZTÁS
 # =====================================================
 @app.route("/schedule")
-@login_required
 def generate_schedule():
     global schedule
     schedule = []
@@ -160,7 +157,7 @@ def generate_schedule():
         ek_used = False
         assigned_roles = {r: [] for r in rules}
 
-        # ===== 1. BEÜLŐS – NÉZNI AKAR =====
+        # ===== BEÜLŐS – NÉZŐS ELSŐBBSÉG =====
         for w in random.sample(workers, len(workers)):
             if len(assigned_roles["nézőtér beülős"]) >= rules["nézőtér beülős"]:
                 break
@@ -180,7 +177,7 @@ def generate_schedule():
             if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # ===== 2. BEÜLŐS FELTÖLTÉS =====
+        # ===== BEÜLŐS FELTÖLTÉS =====
         while len(assigned_roles["nézőtér beülős"]) < rules["nézőtér beülős"]:
             eligible = []
             for w in workers:
@@ -205,7 +202,7 @@ def generate_schedule():
             if chosen.get("ÉK") == "igen":
                 ek_used = True
 
-        # ===== 3. TÖBBI SZEREP =====
+        # ===== TÖBBI SZEREP =====
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
@@ -251,7 +248,6 @@ def generate_schedule():
 # STATISZTIKA
 # =====================================================
 @app.route("/stats")
-@login_required
 def stats():
     stats = {}
     for w in workers:
@@ -274,10 +270,9 @@ def stats():
     return render_template("stats.html", stats=stats)
 
 # =====================================================
-# EXCEL EXPORT – FIX OSZLOPREND
+# EXCEL EXPORT
 # =====================================================
 @app.route("/export/xlsx")
-@login_required
 def export_xlsx():
     wb = Workbook()
     ws = wb.active
@@ -314,5 +309,8 @@ def export_xlsx():
 
     return send_file(tmp.name, as_attachment=True, download_name="beosztas.xlsx")
 
+# =====================================================
+# FUTTATÁS
+# =====================================================
 if __name__ == "__main__":
     app.run(debug=True)
