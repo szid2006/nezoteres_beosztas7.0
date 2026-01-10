@@ -4,45 +4,102 @@
     <meta charset="UTF-8">
     <title>Nézőtéri beosztás</title>
     <style>
-        body { font-family: Arial, sans-serif; }
-        h1 { margin-bottom: 10px; }
-        .nav { margin-bottom: 20px; }
-        .nav a { margin-right: 15px; font-weight: bold; color: #0066cc; text-decoration: none; }
-        .nav a:hover { text-decoration: underline; }
-        .ek { color: red; font-weight: bold; }
-        .warning { color: red; font-weight: bold; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f4f6;
+            padding: 20px;
+        }
+        nav {
+            margin-bottom: 20px;
+        }
+        nav a {
+            margin-right: 15px;
+            text-decoration: none;
+            font-weight: bold;
+            color: #2563eb;
+        }
+        .show {
+            background: white;
+            padding: 16px;
+            margin-bottom: 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .show h2 {
+            margin: 0 0 10px 0;
+        }
+        .role {
+            margin-top: 10px;
+        }
+        .role-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .person {
+            margin-left: 16px;
+        }
+        .ek {
+            color: red;
+            font-weight: bold;
+        }
+        .watch {
+            margin-left: 6px;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
 
+<nav>
+    <a href="/">Import</a>
+    <a href="/schedule">Beosztás</a>
+    <a href="/stats">Statisztika</a>
+    <a href="/export/xlsx">Export (Excel)</a>
+    <a href="/logout">Kilépés</a>
+</nav>
+
 <h1>Nézőtéri beosztás</h1>
 
-<div class="nav">
-    <a href="/">⬅️ Vissza az importhoz</a>
-    <a href="/stats">📊 Statisztika</a>
-    <a href="/export/xlsx">📄 Excel export</a>
-</div>
-
 {% for show in schedule %}
-    <hr>
+<div class="show">
     <h2>{{ show.cím }} – {{ show.dátum }}</h2>
 
-    {% for s in show.szerepek %}
-        <strong>{{ s.szerep }}</strong>
-        {% if s.kiosztott|length < s.kért %}
-            <span class="warning">({{ s.kiosztott|length }}/{{ s.kért }})</span>
-        {% endif %}
-        <ul>
-            {% for d in s.kiosztott %}
-                {% set w = workers | selectattr("név", "equalto", d.név) | first %}
-                <li class="{% if w and w.ÉK == 'igen' %}ek{% endif %}">
-                    {{ d.név }}
-                    {% if w and w.ÉK == 'igen' %}(ÉK){% endif %}
-                    {% if d.watched %} ✨{% endif %}
-                </li>
-            {% endfor %}
-        </ul>
-    {% endfor %}
+    {% if show.hiba %}
+        <div class="error">{{ show.hiba }}</div>
+    {% else %}
+
+        {% for role in show.szerepek %}
+        <div class="role">
+            <div class="role-title">
+                {{ role.szerep }} ({{ role.kiosztott|length }}/{{ role.kért }})
+            </div>
+
+            {% if role.kiosztott %}
+                {% for person in role.kiosztott %}
+                    <div class="person">
+                        {{ person.név }}
+                        {% if person.watched %}
+                            <span class="watch">👁️</span>
+                        {% endif %}
+
+                        {% for w in workers %}
+                            {% if w.név == person.név and w.get("ÉK") == "igen" %}
+                                <span class="ek">(ÉK)</span>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="person">—</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+    {% endif %}
+</div>
 {% endfor %}
 
 </body>
