@@ -8,23 +8,26 @@
 
 <h1>Nézőtéri beosztás</h1>
 
-{% for item in schedule %}
-    <h3>{{ item.cím }} – {{ item.dátum }}</h3>
+{% for show in schedule %}
+    <hr>
+    <h2>{{ show.cím }} – {{ show.dátum }}</h2>
 
-    {% if item.hiba %}
-        <p style="color:red;">⚠️ {{ item.hiba }}</p>
+    {% if show.hiba %}
+        <p style="color:red;">⚠️ {{ show.hiba }}</p>
     {% else %}
-        <strong>{{ item.szerep }}</strong>
-        {% if item.kiosztott|length < item.kért %}
-            <span style="color:red;">
-                ({{ item.kiosztott|length }}/{{ item.kért }})
-            </span>
-        {% endif %}
-        <ul>
-            {% for d in item.kiosztott %}
-                <li>{{ d }}</li>
-            {% endfor %}
-        </ul>
+        {% for s in show.szerepek %}
+            <strong>{{ s.szerep }}</strong>
+            {% if s.kiosztott|length < s.kért %}
+                <span style="color:red;">
+                    ({{ s.kiosztott|length }}/{{ s.kért }})
+                </span>
+            {% endif %}
+            <ul>
+                {% for d in s.kiosztott %}
+                    <li>{{ d }}</li>
+                {% endfor %}
+            </ul>
+        {% endfor %}
     {% endif %}
 {% endfor %}
 
