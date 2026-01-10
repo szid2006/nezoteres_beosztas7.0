@@ -8,7 +8,19 @@
             font-family: Arial, sans-serif;
         }
         h1 {
+            margin-bottom: 10px;
+        }
+        .nav {
             margin-bottom: 20px;
+        }
+        .nav a {
+            margin-right: 15px;
+            text-decoration: none;
+            font-weight: bold;
+            color: #0066cc;
+        }
+        .nav a:hover {
+            text-decoration: underline;
         }
         h2 {
             margin-top: 30px;
@@ -32,11 +44,22 @@
             color: red;
             font-weight: bold;
         }
+        .legend {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #444;
+        }
     </style>
 </head>
 <body>
 
 <h1>Nézőtéri beosztás</h1>
+
+<div class="nav">
+    <a href="/">⬅️ Vissza az importhoz</a>
+    <a href="/stats">📊 Statisztika</a>
+    <a href="/export/csv">📄 CSV export</a>
+</div>
 
 {% for show in schedule %}
     <hr>
@@ -77,6 +100,12 @@
 
     {% endif %}
 {% endfor %}
+
+<div class="legend">
+    <strong>Jelmagyarázat:</strong><br>
+    🔴 <span class="ek">piros név</span> = ÉK<br>
+    👁️ = meg akarta nézni az előadást, ezért elsőbbséget kapott
+</div>
 
 </body>
 </html>
