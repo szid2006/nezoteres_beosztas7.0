@@ -25,14 +25,17 @@ USERS = {
 }
 
 # =====================================================
-# 🔐 BETONBIZTOS GLOBÁLIS AUTH
+# 🔐 SESSION TELJES KIKAPCSOLÁSA (MINDIG LOGIN)
 # =====================================================
 @app.before_request
+def kill_session_every_time():
+    if request.endpoint not in ("login", "static"):
+        session.clear()
+
+@app.before_request
 def force_login():
-    public_paths = ["/login", "/static"]
-    if not any(request.path.startswith(p) for p in public_paths):
-        if "user" not in session:
-            return redirect(url_for("login"))
+    if request.path != "/login" and "user" not in session:
+        return redirect(url_for("login"))
 
 # =====================================================
 # ADATOK
@@ -110,17 +113,15 @@ def logout():
 # =====================================================
 @app.route("/")
 def index():
-    if "user" not in session:
-        return redirect(url_for("login"))
     return render_template("import.html")
-
 
 @app.route("/import/workers", methods=["POST"])
 def import_workers():
     global workers
     workers = import_file(request.files["file"])
+    assignment_count.clear()
     for w in workers:
-        assignment_count.setdefault(w["név"], 0)
+        assignment_count[w["név"]] = 0
     return redirect(url_for("index"))
 
 @app.route("/import/shows", methods=["POST"])
@@ -160,6 +161,7 @@ def generate_schedule():
         ek_used = False
         assigned_roles = {r: [] for r in rules}
 
+        # ===== 1. BEÜLŐS – NÉZNI AKAR ELSŐBBSÉG =====
         for w in random.sample(workers, len(workers)):
             if len(assigned_roles["nézőtér beülős"]) >= rules["nézőtér beülős"]:
                 break
@@ -178,56 +180,62 @@ def generate_schedule():
             assignment_count[w["név"]] += 1
             if w.get("ÉK") == "igen":
                 ek_used = True
-            # ===== BEÜLŐS FELTÖLTÉS, HA NINCS ELÉG NÉZŐS =====
-while len(assigned_roles["nézőtér beülős"]) < rules["nézőtér beülős"]:
-    eligible = []
-    for w in workers:
-        if w["név"] in used:
-            continue
-        if show_date in normalize_list(w.get("nem_ér_rá")):
-            continue
-        if w.get("ÉK") == "igen" and ek_used:
-            continue
 
-        eligible.append(w)
+        # ===== 2. BEÜLŐS FELTÖLTÉS, HA NINCS ELÉG =====
+        while len(assigned_roles["nézőtér beülős"]) < rules["nézőtér beülős"]:
+            eligible = []
+            for w in workers:
+                if w["név"] in used:
+                    continue
+                if show_date in normalize_list(w.get("nem_ér_rá")):
+                    continue
+                if w.get("ÉK") == "igen" and ek_used:
+                    continue
+                eligible.append(w)
 
-    if not eligible:
-        break
+            if not eligible:
+                break
 
-    chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
-    assigned_roles["nézőtér beülős"].append({
-        "név": chosen["név"],
-        "watched": False
-    })
-    used.add(chosen["név"])
-    assignment_count[chosen["név"]] += 1
-    if chosen.get("ÉK") == "igen":
-        ek_used = True
+            chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
+            assigned_roles["nézőtér beülős"].append({
+                "név": chosen["név"],
+                "watched": False
+            })
+            used.add(chosen["név"])
+            assignment_count[chosen["név"]] += 1
+            if chosen.get("ÉK") == "igen":
+                ek_used = True
 
-
+        # ===== 3. TÖBBI SZEREP =====
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
+
             while len(assigned_roles[role]) < needed:
+                eligible = []
                 for w in workers:
                     if w["név"] in used:
                         continue
-                    if w.get("ÉK") == "igen" and ek_used:
+                    if show_date in normalize_list(w.get("nem_ér_rá")):
                         continue
                     if role == "jolly joker" and w.get("ÉK") == "igen":
                         continue
-                    if show_date in normalize_list(w.get("nem_ér_rá")):
+                    if w.get("ÉK") == "igen" and ek_used:
                         continue
+                    eligible.append(w)
 
-                    assigned_roles[role].append({
-                        "név": w["név"],
-                        "watched": False
-                    })
-                    used.add(w["név"])
-                    assignment_count[w["név"]] += 1
-                    if w.get("ÉK") == "igen":
-                        ek_used = True
+                if not eligible:
                     break
+
+                chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
+                assigned_roles[role].append({
+                    "név": chosen["név"],
+                    "watched": False
+                })
+                used.add(chosen["név"])
+                assignment_count[chosen["név"]] += 1
+                if chosen.get("ÉK") == "igen":
+                    ek_used = True
 
         for role in rules:
             show_block["szerepek"].append({
@@ -305,5 +313,8 @@ def export_xlsx():
 
     return send_file(tmp.name, as_attachment=True, download_name="beosztas.xlsx")
 
+# =====================================================
+# FUTTATÁS
+# =====================================================
 if __name__ == "__main__":
     app.run(debug=True)
