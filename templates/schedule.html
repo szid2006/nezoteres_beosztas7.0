@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Beosztás</title>
+</head>
+<body>
+
+<h1>Automatikus beosztás</h1>
+
+{% for item in schedule %}
+    <h3>{{ item.cím }} – {{ item.dátum }}</h3>
+    <ul>
+        {% for d in item.dolgozók %}
+            <li>{{ d }}</li>
+        {% endfor %}
+    </ul>
+{% endfor %}
+
+</body>
+</html>
