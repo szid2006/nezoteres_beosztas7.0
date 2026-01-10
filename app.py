@@ -5,6 +5,7 @@ import csv, io, math, random
 
 app = Flask(__name__)
 
+# ================== ADATOK ==================
 workers = []
 shows = []
 schedule = []
@@ -28,7 +29,7 @@ ROLE_RULES = {
     }
 }
 
-# ---------- SEGÉDEK ----------
+# ================== SEGÉDEK ==================
 def normalize_date(value):
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
@@ -41,8 +42,8 @@ def normalize_list(value):
         return []
     if isinstance(value, float) and math.isnan(value):
         return []
-    text = str(value).strip().lower()
-    if text in ("", "none", "nan"):
+    text = str(value).strip()
+    if text.lower() in ("", "none", "nan"):
         return []
     return [v.strip() for v in text.split(",") if v.strip()]
 
@@ -63,7 +64,7 @@ def import_file(file):
 
     return rows
 
-# ---------- ROUTES ----------
+# ================== ROUTES ==================
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -82,6 +83,7 @@ def import_shows():
     shows = import_file(request.files["file"])
     return redirect(url_for("generate_schedule"))
 
+# ================== BEOSZTÁS ==================
 @app.route("/schedule")
 def generate_schedule():
     global schedule
@@ -110,7 +112,7 @@ def generate_schedule():
         ek_used = False
         assigned_roles = {role: [] for role in rules}
 
-        # ===== 1️⃣ BEÜLŐS – IGÉNY FIX BEÜLTETÉS =====
+        # ===== 1️⃣ BEÜLŐS – IGÉNY FIX ELSŐBBSÉG =====
         beulos_needed = rules.get("nézőtér beülős", 0)
 
         watchers = []
@@ -120,7 +122,7 @@ def generate_schedule():
 
             if show_date in normalize_list(w.get("nem_ér_rá")):
                 continue
-            if show_title not in normalize_list(w.get("nézni_akar")):
+            if show_title not in [s.lower() for s in normalize_list(w.get("nézni_akar"))]:
                 continue
             if is_ek and ek_used:
                 continue
@@ -137,14 +139,17 @@ def generate_schedule():
             if name in used:
                 continue
 
-            assigned_roles["nézőtér beülős"].append(name)
+            assigned_roles["nézőtér beülős"].append({
+                "név": name,
+                "watched": True
+            })
             used.add(name)
             assignment_count[name] += 1
 
             if str(w.get("ÉK")).lower() == "igen":
                 ek_used = True
 
-        # ===== 2️⃣ BEÜLŐS FELTÖLTÉS (HA KELL) =====
+        # ===== 2️⃣ BEÜLŐS FELTÖLTÉS (ROTÁCIÓ) =====
         while len(assigned_roles["nézőtér beülős"]) < beulos_needed:
             eligible = []
             for w in workers:
@@ -174,7 +179,10 @@ def generate_schedule():
 
             chosen = random.choices(eligible, weights=weights, k=1)[0]
 
-            assigned_roles["nézőtér beülős"].append(chosen["név"])
+            assigned_roles["nézőtér beülős"].append({
+                "név": chosen["név"],
+                "watched": False
+            })
             used.add(chosen["név"])
             assignment_count[chosen["név"]] += 1
 
@@ -217,7 +225,10 @@ def generate_schedule():
 
                 chosen = random.choices(eligible, weights=weights, k=1)[0]
 
-                assigned_roles[role].append(chosen["név"])
+                assigned_roles[role].append({
+                    "név": chosen["név"],
+                    "watched": False
+                })
                 used.add(chosen["név"])
                 assignment_count[chosen["név"]] += 1
 
@@ -225,27 +236,14 @@ def generate_schedule():
                     ek_used = True
 
         # ===== 4️⃣ ÖSSZEÁLLÍTÁS =====
-      for role in rules:
-    enriched = []
+        for role in rules:
+            show_block["szerepek"].append({
+                "szerep": role,
+                "kért": rules[role],
+                "kiosztott": assigned_roles[role]
+            })
 
-    for name in assigned_roles[role]:
-        watched = False
-        if role == "nézőtér beülős":
-            w = next(x for x in workers if x["név"] == name)
-            wants = normalize_list(w.get("nézni_akar"))
-            if show_title in [s.lower() for s in wants]:
-                watched = True
-
-        enriched.append({
-            "név": name,
-            "watched": watched
-        })
-
-    show_block["szerepek"].append({
-        "szerep": role,
-        "kért": rules[role],
-        "kiosztott": enriched
-    })
+        schedule.append(show_block)
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
 
