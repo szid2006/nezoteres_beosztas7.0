@@ -1,7 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for
-from openpyxl import load_workbook
+from flask import Flask, render_template, request, redirect, url_for, send_file
+from openpyxl import load_workbook, Workbook
 from datetime import datetime
-import csv, io, math, random
+import csv, io, math, random, tempfile
 
 app = Flask(__name__)
 
@@ -112,21 +112,17 @@ def generate_schedule():
         ek_used = False
         assigned_roles = {role: [] for role in rules}
 
-        # ===== 1️⃣ BEÜLŐS – IGÉNY ELSŐBBSÉG =====
-        beulos_needed = rules.get("nézőtér beülős", 0)
+        # ===== BEÜLŐS – IGÉNY ELSŐBBSÉG =====
+        beulos_needed = rules["nézőtér beülős"]
 
         watchers = []
         for w in workers:
-            name = w["név"]
-            is_ek = str(w.get("ÉK")).lower() == "igen"
-
             if show_date in normalize_list(w.get("nem_ér_rá")):
                 continue
             if show_title not in [s.lower() for s in normalize_list(w.get("nézni_akar"))]:
                 continue
-            if is_ek and ek_used:
+            if w.get("ÉK") == "igen" and ek_used:
                 continue
-
             watchers.append(w)
 
         random.shuffle(watchers)
@@ -134,62 +130,46 @@ def generate_schedule():
         for w in watchers:
             if len(assigned_roles["nézőtér beülős"]) >= beulos_needed:
                 break
-
             name = w["név"]
-            if name in used:
-                continue
-
-            assigned_roles["nézőtér beülős"].append({
-                "név": name,
-                "watched": True
-            })
+            assigned_roles["nézőtér beülős"].append({"név": name, "watched": True})
             used.add(name)
             assignment_count[name] += 1
-
-            if str(w.get("ÉK")).lower() == "igen":
+            if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # ===== 2️⃣ BEÜLŐS FELTÖLTÉS =====
+        # ===== BEÜLŐS FELTÖLTÉS =====
         while len(assigned_roles["nézőtér beülős"]) < beulos_needed:
             eligible = []
             for w in workers:
                 name = w["név"]
-                is_ek = str(w.get("ÉK")).lower() == "igen"
-
                 if name in used:
                     continue
-                if is_ek and ek_used:
+                if w.get("ÉK") == "igen" and ek_used:
                     continue
                 if show_date in normalize_list(w.get("nem_ér_rá")):
                     continue
-
                 eligible.append({
                     "név": name,
-                    "ÉK": is_ek,
+                    "ÉK": w.get("ÉK") == "igen",
                     "count": assignment_count[name]
                 })
 
             if not eligible:
                 break
 
-            weights = [
-                (1 / (c["count"] + 1)) * (0.3 if c["ÉK"] else 1.0)
-                for c in eligible
-            ]
+            chosen = random.choices(
+                eligible,
+                weights=[(1 / (c["count"] + 1)) * (0.3 if c["ÉK"] else 1.0) for c in eligible],
+                k=1
+            )[0]
 
-            chosen = random.choices(eligible, weights=weights, k=1)[0]
-
-            assigned_roles["nézőtér beülős"].append({
-                "név": chosen["név"],
-                "watched": False
-            })
+            assigned_roles["nézőtér beülős"].append({"név": chosen["név"], "watched": False})
             used.add(chosen["név"])
             assignment_count[chosen["név"]] += 1
-
             if chosen["ÉK"]:
                 ek_used = True
 
-        # ===== 3️⃣ MINDEN MÁS SZEREP =====
+        # ===== TÖBBI SZEREPKÖR =====
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
@@ -198,44 +178,36 @@ def generate_schedule():
                 eligible = []
                 for w in workers:
                     name = w["név"]
-                    is_ek = str(w.get("ÉK")).lower() == "igen"
-
                     if name in used:
                         continue
-                    if is_ek and ek_used:
+                    if w.get("ÉK") == "igen" and ek_used:
                         continue
-                    if role == "jolly joker" and is_ek:
+                    if role == "jolly joker" and w.get("ÉK") == "igen":
                         continue
                     if show_date in normalize_list(w.get("nem_ér_rá")):
                         continue
 
                     eligible.append({
                         "név": name,
-                        "ÉK": is_ek,
+                        "ÉK": w.get("ÉK") == "igen",
                         "count": assignment_count[name]
                     })
 
                 if not eligible:
                     break
 
-                weights = [
-                    (1 / (c["count"] + 1)) * (0.3 if c["ÉK"] else 1.0)
-                    for c in eligible
-                ]
+                chosen = random.choices(
+                    eligible,
+                    weights=[(1 / (c["count"] + 1)) * (0.3 if c["ÉK"] else 1.0) for c in eligible],
+                    k=1
+                )[0]
 
-                chosen = random.choices(eligible, weights=weights, k=1)[0]
-
-                assigned_roles[role].append({
-                    "név": chosen["név"],
-                    "watched": False
-                })
+                assigned_roles[role].append({"név": chosen["név"], "watched": False})
                 used.add(chosen["név"])
                 assignment_count[chosen["név"]] += 1
-
                 if chosen["ÉK"]:
                     ek_used = True
 
-        # ===== 4️⃣ ÖSSZEÁLLÍTÁS =====
         for role in rules:
             show_block["szerepek"].append({
                 "szerep": role,
@@ -247,69 +219,41 @@ def generate_schedule():
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
 
-# ================== STATISZTIKA ==================
-@app.route("/stats")
-def stats():
-    stats = {}
+# ================== EXCEL EXPORT (ÚJ FORMÁTUM) ==================
+@app.route("/export/xlsx")
+def export_xlsx():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BEOSZTÁS"
 
-    for w in workers:
-        stats[w["név"]] = {
-            "összes": 0,
-            "beülős": 0,
-            "nézős": 0,
-            "ÉK": (w.get("ÉK") == "igen")
-        }
-
+    # összes szerepkör a fejlécbe
+    all_roles = []
     for show in schedule:
         for s in show["szerepek"]:
-            role = s["szerep"]
-            for d in s["kiosztott"]:
-                name = d["név"]
-                stats[name]["összes"] += 1
-                if role == "nézőtér beülős":
-                    stats[name]["beülős"] += 1
-                if d.get("watched"):
-                    stats[name]["nézős"] += 1
+            if s["szerep"] not in all_roles:
+                all_roles.append(s["szerep"])
+    all_roles.sort()
 
-    return render_template("stats.html", stats=stats)
-
-# ================== EXPORT ==================
-@app.route("/export/csv")
-def export_csv():
-    output = io.StringIO()
-    writer = csv.writer(output)
-
-    writer.writerow([
-        "Előadás",
-        "Dátum",
-        "Szerep",
-        "Név",
-        "ÉK",
-        "Nézős"
-    ])
+    ws.append(["Előadás", "Dátum"] + all_roles)
 
     for show in schedule:
-        for s in show["szerepek"]:
-            for d in s["kiosztott"]:
-                w = next(x for x in workers if x["név"] == d["név"])
-                writer.writerow([
-                    show["cím"],
-                    show["dátum"],
-                    s["szerep"],
-                    d["név"],
-                    "igen" if w.get("ÉK") == "igen" else "",
-                    "igen" if d.get("watched") else ""
-                ])
-
-    output.seek(0)
-
-    return (
-        output.getvalue(),
-        200,
-        {
-            "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": "attachment; filename=beosztas.csv"
+        row = [show["cím"], show["dátum"]]
+        role_map = {
+            s["szerep"]: ", ".join(d["név"] for d in s["kiosztott"])
+            for s in show["szerepek"]
         }
+        for role in all_roles:
+            row.append(role_map.get(role, ""))
+        ws.append(row)
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    wb.save(tmp.name)
+    tmp.close()
+
+    return send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name="beosztas.xlsx"
     )
 
 if __name__ == "__main__":
