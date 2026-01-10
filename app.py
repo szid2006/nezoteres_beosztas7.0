@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for
 import csv, io
 from openpyxl import load_workbook
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -28,6 +29,7 @@ ROLE_RULES = {
 }
 
 
+# ---------- IMPORT SEGÉD ----------
 def import_file(file):
     filename = file.filename.lower()
     rows = []
@@ -47,6 +49,7 @@ def import_file(file):
     return rows
 
 
+# ---------- OLDALAK ----------
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -70,6 +73,7 @@ def import_shows():
     return redirect(url_for("generate_schedule"))
 
 
+# ---------- BEOSZTÁS ----------
 @app.route("/schedule")
 def generate_schedule():
     global schedule
@@ -79,8 +83,16 @@ def generate_schedule():
         total = int(show["létszám"])
         rules = ROLE_RULES.get(total)
 
+        # dátum NORMALIZÁLÁS (EZ JAVÍTJA A 500-AT)
+        if isinstance(show["dátum"], datetime):
+            show_date = show["dátum"].strftime("%Y-%m-%d")
+        else:
+            show_date = str(show["dátum"])[:10]
+
+        show_title = show["cím"]
+
         show_block = {
-            "cím": show["cím"],
+            "cím": show_title,
             "dátum": show["dátum"],
             "szerepek": [],
             "hiba": None
@@ -92,14 +104,12 @@ def generate_schedule():
             continue
 
         used = set()
-        ek_used = False
-        show_date = show["dátum"][:10]
-        show_title = show["cím"]
+        ek_used = False  # max 1 ÉK / előadás
 
         for role, needed in rules.items():
             assigned = []
-
             candidates = []
+
             for w in workers:
                 name = w["név"]
                 is_ek = (w.get("ÉK") == "igen")
@@ -107,23 +117,21 @@ def generate_schedule():
                 if name in used:
                     continue
 
-                # max 1 ÉK
                 if is_ek and ek_used:
                     continue
 
-                # jolly joker nem lehet ÉK
                 if role == "jolly joker" and is_ek:
                     continue
 
                 # nem ér rá
                 if w.get("nem_ér_rá"):
-                    dates = [d.strip() for d in w["nem_ér_rá"].split(",")]
+                    dates = [d.strip() for d in str(w["nem_ér_rá"]).split(",")]
                     if show_date in dates:
                         continue
 
                 # nézni akarja
                 if w.get("nézni_akar"):
-                    wanted = [s.strip() for s in w["nézni_akar"].split(",")]
+                    wanted = [s.strip() for s in str(w["nézni_akar"]).split(",")]
                     if show_title in wanted:
                         continue
 
