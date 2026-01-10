@@ -225,14 +225,27 @@ def generate_schedule():
                     ek_used = True
 
         # ===== 4️⃣ ÖSSZEÁLLÍTÁS =====
-        for role in rules:
-            show_block["szerepek"].append({
-                "szerep": role,
-                "kért": rules[role],
-                "kiosztott": assigned_roles[role]
-            })
+      for role in rules:
+    enriched = []
 
-        schedule.append(show_block)
+    for name in assigned_roles[role]:
+        watched = False
+        if role == "nézőtér beülős":
+            w = next(x for x in workers if x["név"] == name)
+            wants = normalize_list(w.get("nézni_akar"))
+            if show_title in [s.lower() for s in wants]:
+                watched = True
+
+        enriched.append({
+            "név": name,
+            "watched": watched
+        })
+
+    show_block["szerepek"].append({
+        "szerep": role,
+        "kért": rules[role],
+        "kiosztott": enriched
+    })
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
 
