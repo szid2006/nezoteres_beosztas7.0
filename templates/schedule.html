@@ -1,8 +1,38 @@
 <!DOCTYPE html>
-<html>
+<html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <title>Beosztás</title>
+    <title>Nézőtéri beosztás</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        h2 {
+            margin-top: 30px;
+        }
+        ul {
+            margin-top: 5px;
+            margin-bottom: 15px;
+        }
+        li {
+            line-height: 1.6;
+        }
+        .ek {
+            color: red;
+            font-weight: bold;
+        }
+        .icon {
+            margin-left: 6px;
+            cursor: help;
+        }
+        .warning {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
 
@@ -13,24 +43,38 @@
     <h2>{{ show.cím }} – {{ show.dátum }}</h2>
 
     {% if show.hiba %}
-        <p style="color:red;">⚠️ {{ show.hiba }}</p>
+        <p class="warning">⚠️ {{ show.hiba }}</p>
     {% else %}
+
         {% for s in show.szerepek %}
             <strong>{{ s.szerep }}</strong>
             {% if s.kiosztott|length < s.kért %}
-                <span style="color:red;">
+                <span class="warning">
                     ({{ s.kiosztott|length }}/{{ s.kért }})
                 </span>
             {% endif %}
+
             <ul>
                 {% for d in s.kiosztott %}
-                    {% set w = workers | selectattr("név", "equalto", d) | first %}
-                    <li style="{% if w and w.ÉK == 'igen' %}color:red;{% endif %}">
-                        {{ d }}{% if w and w.ÉK == 'igen' %} (ÉK){% endif %}
+                    {% set w = workers | selectattr("név", "equalto", d.név) | first %}
+                    <li>
+                        <span class="{% if w and w.ÉK == 'igen' %}ek{% endif %}">
+                            {{ d.név }}
+                            {% if w and w.ÉK == 'igen' %}
+                                (ÉK)
+                            {% endif %}
+                        </span>
+
+                        {% if d.watched %}
+                            <span class="icon" title="Meg akarta nézni ezt az előadást">
+                                👁️
+                            </span>
+                        {% endif %}
                     </li>
                 {% endfor %}
             </ul>
         {% endfor %}
+
     {% endif %}
 {% endfor %}
 
