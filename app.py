@@ -74,12 +74,16 @@ def generate_schedule():
         total = int(show["létszám"])
         rules = ROLE_RULES.get(total)
 
+        show_block = {
+            "cím": show["cím"],
+            "dátum": show["dátum"],
+            "szerepek": [],
+            "hiba": None
+        }
+
         if not rules:
-            schedule.append({
-                "cím": show["cím"],
-                "dátum": show["dátum"],
-                "hiba": f"Nincs szabály {total} főre"
-            })
+            show_block["hiba"] = f"Nincs szabály {total} főre"
+            schedule.append(show_block)
             continue
 
         available_workers = [w["név"] for w in workers]
@@ -93,12 +97,12 @@ def generate_schedule():
                     assigned.append(name)
                     used.add(name)
 
-            schedule.append({
-                "cím": show["cím"],
-                "dátum": show["dátum"],
+            show_block["szerepek"].append({
                 "szerep": role,
                 "kért": needed,
                 "kiosztott": assigned
             })
+
+        schedule.append(show_block)
 
     return render_template("schedule.html", schedule=schedule)
