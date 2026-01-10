@@ -112,7 +112,7 @@ def generate_schedule():
         ek_used = False
         assigned_roles = {role: [] for role in rules}
 
-        # ===== 1️⃣ BEÜLŐS – IGÉNY FIX ELSŐBBSÉG =====
+        # ===== 1️⃣ BEÜLŐS – IGÉNY ELSŐBBSÉG =====
         beulos_needed = rules.get("nézőtér beülős", 0)
 
         watchers = []
@@ -149,7 +149,7 @@ def generate_schedule():
             if str(w.get("ÉK")).lower() == "igen":
                 ek_used = True
 
-        # ===== 2️⃣ BEÜLŐS FELTÖLTÉS (ROTÁCIÓ) =====
+        # ===== 2️⃣ BEÜLŐS FELTÖLTÉS =====
         while len(assigned_roles["nézőtér beülős"]) < beulos_needed:
             eligible = []
             for w in workers:
@@ -246,6 +246,71 @@ def generate_schedule():
         schedule.append(show_block)
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
+
+# ================== STATISZTIKA ==================
+@app.route("/stats")
+def stats():
+    stats = {}
+
+    for w in workers:
+        stats[w["név"]] = {
+            "összes": 0,
+            "beülős": 0,
+            "nézős": 0,
+            "ÉK": (w.get("ÉK") == "igen")
+        }
+
+    for show in schedule:
+        for s in show["szerepek"]:
+            role = s["szerep"]
+            for d in s["kiosztott"]:
+                name = d["név"]
+                stats[name]["összes"] += 1
+                if role == "nézőtér beülős":
+                    stats[name]["beülős"] += 1
+                if d.get("watched"):
+                    stats[name]["nézős"] += 1
+
+    return render_template("stats.html", stats=stats)
+
+# ================== EXPORT ==================
+@app.route("/export/csv")
+def export_csv():
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "Előadás",
+        "Dátum",
+        "Szerep",
+        "Név",
+        "ÉK",
+        "Nézős"
+    ])
+
+    for show in schedule:
+        for s in show["szerepek"]:
+            for d in s["kiosztott"]:
+                w = next(x for x in workers if x["név"] == d["név"])
+                writer.writerow([
+                    show["cím"],
+                    show["dátum"],
+                    s["szerep"],
+                    d["név"],
+                    "igen" if w.get("ÉK") == "igen" else "",
+                    "igen" if d.get("watched") else ""
+                ])
+
+    output.seek(0)
+
+    return (
+        output.getvalue(),
+        200,
+        {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": "attachment; filename=beosztas.csv"
+        }
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)
