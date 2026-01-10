@@ -4,13 +4,28 @@ from openpyxl import load_workbook
 
 app = Flask(__name__)
 
-# ================== TÁROLÓK ==================
 workers = []
 shows = []
 schedule = []
 
+ROLE_RULES = {
+    9: {
+        "nézőtér beülős": 2,
+        "nézőtér csipog": 2,
+        "ruhatár bal": 2,
+        "ruhatár jobb": 1,
+        "ruhatár erkély": 1
+    },
+    8: {
+        "nézőtér beülős": 2,
+        "nézőtér csipog": 2,
+        "ruhatár bal": 2,
+        "ruhatár jobb": 1
+    }
+}
 
-# ================== SEGÉDFÜGGVÉNY ==================
+
+# ===== IMPORT =====
 def import_file(file):
     filename = file.filename.lower()
     rows = []
@@ -27,62 +42,63 @@ def import_file(file):
         for row in ws.iter_rows(min_row=2, values_only=True):
             rows.append(dict(zip(headers, row)))
 
-    else:
-        raise ValueError("Csak CSV vagy XLSX tölthető fel")
-
     return rows
 
 
-# ================== OLDALAK ==================
 @app.route("/")
 def index():
     return render_template("import.html")
 
 
-# ================== DOLGOZÓK IMPORT ==================
 @app.route("/import/workers", methods=["POST"])
 def import_workers():
     global workers
-    file = request.files.get("file")
-    workers = import_file(file)
+    workers = import_file(request.files["file"])
     return redirect(url_for("index"))
 
 
-# ================== ELŐADÁSOK IMPORT ==================
 @app.route("/import/shows", methods=["POST"])
 def import_shows():
     global shows
-    file = request.files.get("file")
-    shows = import_file(file)
+    shows = import_file(request.files["file"])
     return redirect(url_for("generate_schedule"))
 
 
-# ================== BEOSZTÁS GENERÁLÁS ==================
+# ===== BEOSZTÁS GENERÁLÁS =====
 @app.route("/schedule")
 def generate_schedule():
     global schedule
     schedule = []
 
-    worker_index = 0
-
     for show in shows:
-        needed = int(show["létszám"])
-        assigned = []
+        total = int(show["létszám"])
+        rules = ROLE_RULES.get(total)
 
-        for _ in range(needed):
-            if worker_index >= len(workers):
-                break
-            assigned.append(workers[worker_index]["név"])
-            worker_index += 1
+        if not rules:
+            schedule.append({
+                "cím": show["cím"],
+                "dátum": show["dátum"],
+                "hiba": f"Nincs szabály {total} főre"
+            })
+            continue
 
-        schedule.append({
-            "cím": show["cím"],
-            "dátum": show["dátum"],
-            "dolgozók": assigned
-        })
+        available_workers = [w["név"] for w in workers]
+        used = set()
+
+        for role, needed in rules.items():
+            assigned = []
+
+            for name in available_workers:
+                if name not in used and len(assigned) < needed:
+                    assigned.append(name)
+                    used.add(name)
+
+            schedule.append({
+                "cím": show["cím"],
+                "dátum": show["dátum"],
+                "szerep": role,
+                "kért": needed,
+                "kiosztott": assigned
+            })
 
     return render_template("schedule.html", schedule=schedule)
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
