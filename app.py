@@ -1,8 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for
-import csv, io
+import csv, io, math
 from openpyxl import load_workbook
 from datetime import datetime
-import math
 
 app = Flask(__name__)
 
@@ -30,17 +29,23 @@ ROLE_RULES = {
 }
 
 
-# --------- SEGÉD ---------
 def normalize_date(value):
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
+    if value is None:
+        return ""
     return str(value)[:10]
 
 
 def normalize_list(value):
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+    if value is None:
         return []
-    return [v.strip() for v in str(value).split(",") if v.strip()]
+    if isinstance(value, float) and math.isnan(value):
+        return []
+    text = str(value).strip()
+    if text.lower() in ("", "none", "nan"):
+        return []
+    return [v.strip() for v in text.split(",") if v.strip()]
 
 
 def import_file(file):
@@ -62,7 +67,6 @@ def import_file(file):
     return rows
 
 
-# --------- OLDALAK ---------
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -72,10 +76,8 @@ def index():
 def import_workers():
     global workers
     workers = import_file(request.files["file"])
-
     for w in workers:
         assignment_count.setdefault(w["név"], 0)
-
     return redirect(url_for("index"))
 
 
@@ -86,7 +88,6 @@ def import_shows():
     return redirect(url_for("generate_schedule"))
 
 
-# --------- BEOSZTÁS ---------
 @app.route("/schedule")
 def generate_schedule():
     global schedule
@@ -117,24 +118,19 @@ def generate_schedule():
         for role, needed in rules.items():
             assigned = []
 
-            # ---------- 1️⃣ HARD FILTER ----------
             eligible = []
             for w in workers:
                 name = w["név"]
-                is_ek = (w.get("ÉK") == "igen")
+                is_ek = (str(w.get("ÉK")).lower() == "igen")
 
                 if name in used:
                     continue
-
                 if is_ek and ek_used:
                     continue
-
                 if role == "jolly joker" and is_ek:
                     continue
-
                 if show_date in normalize_list(w.get("nem_ér_rá")):
                     continue
-
                 if show_title in normalize_list(w.get("nézni_akar")):
                     continue
 
@@ -144,23 +140,19 @@ def generate_schedule():
                     "count": assignment_count[name]
                 })
 
-            # ---------- 2️⃣ FAIR SORT ----------
             eligible.sort(
                 key=lambda x: (
-                    x["count"],          # kevesebb beosztás előny
-                    1 if x["ÉK"] else 0  # ÉK hátrány
+                    x["count"],
+                    1 if x["ÉK"] else 0
                 )
             )
 
-            # ---------- KIOSZTÁS ----------
             for c in eligible:
                 if len(assigned) == needed:
                     break
-
                 assigned.append(c["név"])
                 used.add(c["név"])
                 assignment_count[c["név"]] += 1
-
                 if c["ÉK"]:
                     ek_used = True
 
