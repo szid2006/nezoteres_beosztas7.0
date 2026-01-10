@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>Statisztika</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #aaa;
+            padding: 6px 10px;
+            text-align: center;
+        }
+        th {
+            background: #f2f2f2;
+        }
+        .ek {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Beosztási statisztika</h1>
+
+<table>
+    <tr>
+        <th>Név</th>
+        <th>ÉK</th>
+        <th>Összes beosztás</th>
+        <th>Beülős</th>
+        <th>Nézős (👁️)</th>
+    </tr>
+
+    {% for name, s in stats.items() %}
+    <tr>
+        <td>{{ name }}</td>
+        <td class="{% if s.ÉK %}ek{% endif %}">
+            {% if s.ÉK %}igen{% else %}nem{% endif %}
+        </td>
+        <td>{{ s.összes }}</td>
+        <td>{{ s.beülős }}</td>
+        <td>{{ s.nézős }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<p>
+    <a href="/export/csv">📄 CSV export</a>
+</p>
+
+</body>
+</html>
