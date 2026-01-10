@@ -92,10 +92,10 @@ def generate_schedule():
         rules = ROLE_RULES.get(total)
 
         show_date = normalize_date(show["dátum"])
-        show_title = show["cím"]
+        show_title = show["cím"].strip().lower()
 
         show_block = {
-            "cím": show_title,
+            "cím": show["cím"],
             "dátum": show["dátum"],
             "szerepek": [],
             "hiba": None
@@ -107,12 +107,45 @@ def generate_schedule():
             continue
 
         used = set()
-        ek_used = False  # 🔒 GLOBÁLIS, ELŐADÁS SZINTŰ ÉK LOCK
+        ek_used = False
+        assigned_roles = {role: [] for role in rules}
 
-        for role, needed in rules.items():
-            assigned = []
+        # ===== 1️⃣ BEÜLŐS – IGÉNY FIX BEÜLTETÉS =====
+        beulos_needed = rules.get("nézőtér beülős", 0)
 
-            # HARD FILTER
+        watchers = []
+        for w in workers:
+            name = w["név"]
+            is_ek = str(w.get("ÉK")).lower() == "igen"
+
+            if show_date in normalize_list(w.get("nem_ér_rá")):
+                continue
+            if show_title not in normalize_list(w.get("nézni_akar")):
+                continue
+            if is_ek and ek_used:
+                continue
+
+            watchers.append(w)
+
+        random.shuffle(watchers)
+
+        for w in watchers:
+            if len(assigned_roles["nézőtér beülős"]) >= beulos_needed:
+                break
+
+            name = w["név"]
+            if name in used:
+                continue
+
+            assigned_roles["nézőtér beülős"].append(name)
+            used.add(name)
+            assignment_count[name] += 1
+
+            if str(w.get("ÉK")).lower() == "igen":
+                ek_used = True
+
+        # ===== 2️⃣ BEÜLŐS FELTÖLTÉS (HA KELL) =====
+        while len(assigned_roles["nézőtér beülős"]) < beulos_needed:
             eligible = []
             for w in workers:
                 name = w["név"]
@@ -122,11 +155,7 @@ def generate_schedule():
                     continue
                 if is_ek and ek_used:
                     continue
-                if role == "jolly joker" and is_ek:
-                    continue
                 if show_date in normalize_list(w.get("nem_ér_rá")):
-                    continue
-                if show_title in normalize_list(w.get("nézni_akar")):
                     continue
 
                 eligible.append({
@@ -135,8 +164,49 @@ def generate_schedule():
                     "count": assignment_count[name]
                 })
 
-            # SÚLYOZOTT RANDOM + ÉK KIZÁRÁS AZONNAL
-            for _ in range(needed):
+            if not eligible:
+                break
+
+            weights = [
+                (1 / (c["count"] + 1)) * (0.3 if c["ÉK"] else 1.0)
+                for c in eligible
+            ]
+
+            chosen = random.choices(eligible, weights=weights, k=1)[0]
+
+            assigned_roles["nézőtér beülős"].append(chosen["név"])
+            used.add(chosen["név"])
+            assignment_count[chosen["név"]] += 1
+
+            if chosen["ÉK"]:
+                ek_used = True
+
+        # ===== 3️⃣ MINDEN MÁS SZEREP =====
+        for role, needed in rules.items():
+            if role == "nézőtér beülős":
+                continue
+
+            while len(assigned_roles[role]) < needed:
+                eligible = []
+                for w in workers:
+                    name = w["név"]
+                    is_ek = str(w.get("ÉK")).lower() == "igen"
+
+                    if name in used:
+                        continue
+                    if is_ek and ek_used:
+                        continue
+                    if role == "jolly joker" and is_ek:
+                        continue
+                    if show_date in normalize_list(w.get("nem_ér_rá")):
+                        continue
+
+                    eligible.append({
+                        "név": name,
+                        "ÉK": is_ek,
+                        "count": assignment_count[name]
+                    })
+
                 if not eligible:
                     break
 
@@ -147,22 +217,19 @@ def generate_schedule():
 
                 chosen = random.choices(eligible, weights=weights, k=1)[0]
 
-                assigned.append(chosen["név"])
+                assigned_roles[role].append(chosen["név"])
                 used.add(chosen["név"])
                 assignment_count[chosen["név"]] += 1
 
-                # 🔴 KRITIKUS RÉSZ
                 if chosen["ÉK"]:
                     ek_used = True
-                    # AZONNAL töröljük az összes többi ÉK-t
-                    eligible = [c for c in eligible if not c["ÉK"]]
-                else:
-                    eligible = [c for c in eligible if c["név"] != chosen["név"]]
 
+        # ===== 4️⃣ ÖSSZEÁLLÍTÁS =====
+        for role in rules:
             show_block["szerepek"].append({
                 "szerep": role,
-                "kért": needed,
-                "kiosztott": assigned
+                "kért": rules[role],
+                "kiosztott": assigned_roles[role]
             })
 
         schedule.append(show_block)
