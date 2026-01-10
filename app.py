@@ -5,25 +5,26 @@ from flask import (
 from openpyxl import load_workbook, Workbook
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-import csv, io, math, random, tempfile
 from functools import wraps
+import csv, io, math, random, tempfile
 
 app = Flask(__name__)
-app.secret_key = "nagyon_titkos_kulcs"  # Renderen ENV-be tedd később
+app.secret_key = "nagyon_titkos_kulcs"  # Renderen ENV-be tedd
 
-# ================== FELHASZNÁLÓK ==================
+# =====================================================
+# FELHASZNÁLÓK (KÉSŐBB DB-RE CSERÉLHETŐ)
+# =====================================================
 USERS = {
-    "admin": {
+    "Szidi": {
         "password": generate_password_hash("admin123"),
         "role": "admin"
     },
-    "vezeto": {
-        "password": generate_password_hash("vezeto123"),
+    "Zsuzsi": {
+        "password": generate_password_hash("1234"),
         "role": "user"
     }
 }
 
-# ================== LOGIN VÉDELEM ==================
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -32,7 +33,9 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ================== ADATOK ==================
+# =====================================================
+# ADATOK
+# =====================================================
 workers = []
 shows = []
 schedule = []
@@ -56,7 +59,9 @@ ROLE_RULES = {
     }
 }
 
-# ================== SEGÉDEK ==================
+# =====================================================
+# SEGÉDFÜGGVÉNYEK
+# =====================================================
 def normalize_date(value):
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
@@ -69,15 +74,16 @@ def normalize_list(value):
 
 def import_file(file):
     rows = []
-    if file.filename.endswith(".xlsx"):
-        wb = load_workbook(file, data_only=True)
-        ws = wb.active
-        headers = [c.value for c in ws[1]]
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            rows.append(dict(zip(headers, row)))
+    wb = load_workbook(file, data_only=True)
+    ws = wb.active
+    headers = [c.value for c in ws[1]]
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        rows.append(dict(zip(headers, row)))
     return rows
 
-# ================== AUTH ==================
+# =====================================================
+# AUTH
+# =====================================================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -98,7 +104,9 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# ================== OLDALAK ==================
+# =====================================================
+# OLDALAK
+# =====================================================
 @app.route("/")
 @login_required
 def index():
@@ -120,12 +128,128 @@ def import_shows():
     shows = import_file(request.files["file"])
     return redirect(url_for("generate_schedule"))
 
+# =====================================================
+# BEOSZTÁS GENERÁLÁS
+# =====================================================
 @app.route("/schedule")
 @login_required
 def generate_schedule():
-    # (ITT A KORÁBBI BEOSZTÓ LOGIKÁD MARAD VÁLTOZATLANUL)
+    global schedule
+    schedule = []
+
+    for show in shows:
+        total = int(show["létszám"])
+        rules = ROLE_RULES.get(total)
+
+        show_date = normalize_date(show["dátum"])
+        show_title = show["cím"].strip().lower()
+
+        show_block = {
+            "cím": show["cím"],
+            "dátum": show["dátum"],
+            "szerepek": [],
+            "hiba": None
+        }
+
+        if not rules:
+            show_block["hiba"] = f"Nincs szabály {total} főre"
+            schedule.append(show_block)
+            continue
+
+        used = set()
+        ek_used = False
+        assigned_roles = {r: [] for r in rules}
+
+        # ===== 1. BEÜLŐS – NÉZNI AKAR =====
+        for w in random.sample(workers, len(workers)):
+            if len(assigned_roles["nézőtér beülős"]) >= rules["nézőtér beülős"]:
+                break
+            if show_date in normalize_list(w.get("nem_ér_rá")):
+                continue
+            if show_title not in [s.lower() for s in normalize_list(w.get("nézni_akar"))]:
+                continue
+            if w.get("ÉK") == "igen" and ek_used:
+                continue
+
+            assigned_roles["nézőtér beülős"].append({
+                "név": w["név"],
+                "watched": True
+            })
+            used.add(w["név"])
+            assignment_count[w["név"]] += 1
+            if w.get("ÉK") == "igen":
+                ek_used = True
+
+        # ===== 2. BEÜLŐS FELTÖLTÉS =====
+        while len(assigned_roles["nézőtér beülős"]) < rules["nézőtér beülős"]:
+            eligible = []
+            for w in workers:
+                if w["név"] in used:
+                    continue
+                if w.get("ÉK") == "igen" and ek_used:
+                    continue
+                if show_date in normalize_list(w.get("nem_ér_rá")):
+                    continue
+                eligible.append(w)
+
+            if not eligible:
+                break
+
+            chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
+            assigned_roles["nézőtér beülős"].append({
+                "név": chosen["név"],
+                "watched": False
+            })
+            used.add(chosen["név"])
+            assignment_count[chosen["név"]] += 1
+            if chosen.get("ÉK") == "igen":
+                ek_used = True
+
+        # ===== 3. TÖBBI SZEREP =====
+        for role, needed in rules.items():
+            if role == "nézőtér beülős":
+                continue
+
+            while len(assigned_roles[role]) < needed:
+                eligible = []
+                for w in workers:
+                    if w["név"] in used:
+                        continue
+                    if w.get("ÉK") == "igen" and ek_used:
+                        continue
+                    if role == "jolly joker" and w.get("ÉK") == "igen":
+                        continue
+                    if show_date in normalize_list(w.get("nem_ér_rá")):
+                        continue
+                    eligible.append(w)
+
+                if not eligible:
+                    break
+
+                chosen = min(eligible, key=lambda w: assignment_count[w["név"]])
+                assigned_roles[role].append({
+                    "név": chosen["név"],
+                    "watched": False
+                })
+                used.add(chosen["név"])
+                assignment_count[chosen["név"]] += 1
+                if chosen.get("ÉK") == "igen":
+                    ek_used = True
+
+        for role in rules:
+            show_block["szerepek"].append({
+                "szerep": role,
+                "kért": rules[role],
+                "kiosztott": assigned_roles[role]
+            })
+
+        schedule.append(show_block)
+
     return render_template("schedule.html", schedule=schedule, workers=workers)
 
+# =====================================================
+# STATISZTIKA
+# =====================================================
 @app.route("/stats")
 @login_required
 def stats():
@@ -137,6 +261,7 @@ def stats():
             "nézős": 0,
             "ÉK": (w.get("ÉK") == "igen")
         }
+
     for show in schedule:
         for s in show["szerepek"]:
             for d in s["kiosztott"]:
@@ -145,8 +270,12 @@ def stats():
                     stats[d["név"]]["beülős"] += 1
                 if d.get("watched"):
                     stats[d["név"]]["nézős"] += 1
+
     return render_template("stats.html", stats=stats)
 
+# =====================================================
+# EXCEL EXPORT – FIX OSZLOPREND
+# =====================================================
 @app.route("/export/xlsx")
 @login_required
 def export_xlsx():
@@ -154,15 +283,14 @@ def export_xlsx():
     ws = wb.active
     ws.title = "BEOSZTÁS"
 
-    headers = [
+    ws.append([
         "Előadás", "Dátum",
         "nézőtér beülős 1", "nézőtér beülős 2",
         "nézőtér csipog 1", "nézőtér csipog 2",
         "jolly joker",
         "ruhatár bal 1", "ruhatár bal 2",
         "ruhatár jobb", "ruhatár erkély"
-    ]
-    ws.append(headers)
+    ])
 
     for show in schedule:
         role_map = {
@@ -170,7 +298,7 @@ def export_xlsx():
             for s in show["szerepek"]
         }
 
-        row = [
+        ws.append([
             show["cím"], show["dátum"],
             *(role_map.get("nézőtér beülős", ["", ""])[:2]),
             *(role_map.get("nézőtér csipog", ["", ""])[:2]),
@@ -178,8 +306,7 @@ def export_xlsx():
             *(role_map.get("ruhatár bal", ["", ""])[:2]),
             role_map.get("ruhatár jobb", [""])[0],
             role_map.get("ruhatár erkély", [""])[0]
-        ]
-        ws.append(row)
+        ])
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     wb.save(tmp.name)
