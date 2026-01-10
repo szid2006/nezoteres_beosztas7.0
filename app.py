@@ -9,7 +9,7 @@ import math, random, tempfile
 
 app = Flask(__name__)
 app.secret_key = "nagyon_titkos_kulcs"
-app.config["SESSION_PERMANENT"] = False   # 🔑 kulcsfontosságú
+app.config["SESSION_PERMANENT"] = False   # böngésző bezárásig él
 
 # =====================================================
 # FELHASZNÁLÓK
@@ -26,7 +26,7 @@ USERS = {
 }
 
 # =====================================================
-# 🔐 GLOBÁLIS AUTH – STABIL
+# GLOBÁLIS AUTH
 # =====================================================
 @app.before_request
 def force_login():
@@ -160,10 +160,12 @@ def generate_schedule():
         ek_used = False
         assigned_roles = {r: [] for r in rules}
 
-        # 1. beülős – nézni akarók
+        # ===== 1. BEÜLŐS – NÉZNI AKAR ELSŐBBSÉG =====
         for w in random.sample(workers, len(workers)):
             if len(assigned_roles["nézőtér beülős"]) >= rules["nézőtér beülős"]:
                 break
+            if w["név"] in used:
+                continue
             if show_date in normalize_list(w.get("nem_ér_rá")):
                 continue
             if show_title not in [s.lower() for s in normalize_list(w.get("nézni_akar"))]:
@@ -180,14 +182,18 @@ def generate_schedule():
             if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # 2. beülős feltöltés
+        # ===== 2. BEÜLŐS FELTÖLTÉS, HA NINCS ELÉG =====
         while len(assigned_roles["nézőtér beülős"]) < rules["nézőtér beülős"]:
-            eligible = [
-                w for w in workers
-                if w["név"] not in used
-                and show_date not in normalize_list(w.get("nem_ér_rá"))
-                and not (w.get("ÉK") == "igen" and ek_used)
-            ]
+            eligible = []
+            for w in workers:
+                if w["név"] in used:
+                    continue
+                if show_date in normalize_list(w.get("nem_ér_rá")):
+                    continue
+                if w.get("ÉK") == "igen" and ek_used:
+                    continue
+                eligible.append(w)
+
             if not eligible:
                 break
 
@@ -201,19 +207,24 @@ def generate_schedule():
             if chosen.get("ÉK") == "igen":
                 ek_used = True
 
-        # 3. többi szerep
+        # ===== 3. TÖBBI SZEREP =====
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
 
             while len(assigned_roles[role]) < needed:
-                eligible = [
-                    w for w in workers
-                    if w["név"] not in used
-                    and show_date not in normalize_list(w.get("nem_ér_rá"))
-                    and not (role == "jolly joker" and w.get("ÉK") == "igen")
-                    and not (w.get("ÉK") == "igen" and ek_used)
-                ]
+                eligible = []
+                for w in workers:
+                    if w["név"] in used:
+                        continue
+                    if show_date in normalize_list(w.get("nem_ér_rá")):
+                        continue
+                    if role == "jolly joker" and w.get("ÉK") == "igen":
+                        continue
+                    if w.get("ÉK") == "igen" and ek_used:
+                        continue
+                    eligible.append(w)
+
                 if not eligible:
                     break
 
@@ -237,6 +248,71 @@ def generate_schedule():
         schedule.append(show_block)
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
+
+# =====================================================
+# STATISZTIKA
+# =====================================================
+@app.route("/stats")
+def stats():
+    stats = {}
+    for w in workers:
+        stats[w["név"]] = {
+            "összes": 0,
+            "beülős": 0,
+            "nézős": 0,
+            "ÉK": (w.get("ÉK") == "igen")
+        }
+
+    for show in schedule:
+        for s in show["szerepek"]:
+            for d in s["kiosztott"]:
+                stats[d["név"]]["összes"] += 1
+                if s["szerep"] == "nézőtér beülős":
+                    stats[d["név"]]["beülős"] += 1
+                if d.get("watched"):
+                    stats[d["név"]]["nézős"] += 1
+
+    return render_template("stats.html", stats=stats)
+
+# =====================================================
+# EXPORT
+# =====================================================
+@app.route("/export/xlsx")
+def export_xlsx():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BEOSZTÁS"
+
+    ws.append([
+        "Előadás", "Dátum",
+        "nézőtér beülős 1", "nézőtér beülős 2",
+        "nézőtér csipog 1", "nézőtér csipog 2",
+        "jolly joker",
+        "ruhatár bal 1", "ruhatár bal 2",
+        "ruhatár jobb", "ruhatár erkély"
+    ])
+
+    for show in schedule:
+        role_map = {
+            s["szerep"]: [d["név"] for d in s["kiosztott"]]
+            for s in show["szerepek"]
+        }
+
+        ws.append([
+            show["cím"], show["dátum"],
+            *(role_map.get("nézőtér beülős", ["", ""])[:2]),
+            *(role_map.get("nézőtér csipog", ["", ""])[:2]),
+            role_map.get("jolly joker", [""])[0],
+            *(role_map.get("ruhatár bal", ["", ""])[:2]),
+            role_map.get("ruhatár jobb", [""])[0],
+            role_map.get("ruhatár erkély", [""])[0]
+        ])
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    wb.save(tmp.name)
+    tmp.close()
+
+    return send_file(tmp.name, as_attachment=True, download_name="beosztas.xlsx")
 
 # =====================================================
 # FUTTATÁS
