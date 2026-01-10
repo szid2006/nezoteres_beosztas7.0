@@ -4,13 +4,11 @@ from openpyxl import load_workbook
 
 app = Flask(__name__)
 
-# ===== ADATTÁROLÁS =====
 workers = []
 shows = []
 schedule = []
 assignment_count = {}
 
-# ===== SZABÁLYRENDSZER =====
 ROLE_RULES = {
     9: {
         "nézőtér beülős": 2,
@@ -29,7 +27,7 @@ ROLE_RULES = {
     }
 }
 
-# ===== IMPORT SEGÉD =====
+
 def import_file(file):
     filename = file.filename.lower()
     rows = []
@@ -49,7 +47,6 @@ def import_file(file):
     return rows
 
 
-# ===== OLDALAK =====
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -73,7 +70,6 @@ def import_shows():
     return redirect(url_for("generate_schedule"))
 
 
-# ===== BEOSZTÁS =====
 @app.route("/schedule")
 def generate_schedule():
     global schedule
@@ -96,7 +92,9 @@ def generate_schedule():
             continue
 
         used = set()
-        ek_used = False  # max 1 ÉK / előadás
+        ek_used = False
+        show_date = show["dátum"][:10]
+        show_title = show["cím"]
 
         for role, needed in rules.items():
             assigned = []
@@ -117,21 +115,41 @@ def generate_schedule():
                 if role == "jolly joker" and is_ek:
                     continue
 
-                candidates.append(name)
+                # nem ér rá
+                if w.get("nem_ér_rá"):
+                    dates = [d.strip() for d in w["nem_ér_rá"].split(",")]
+                    if show_date in dates:
+                        continue
 
-            # ritkábban beosztott előny
-            candidates.sort(key=lambda n: assignment_count[n])
+                # nézni akarja
+                if w.get("nézni_akar"):
+                    wanted = [s.strip() for s in w["nézni_akar"].split(",")]
+                    if show_title in wanted:
+                        continue
 
-            for name in candidates:
+                candidates.append({
+                    "név": name,
+                    "ÉK": is_ek,
+                    "count": assignment_count[name]
+                })
+
+            # ROTÁCIÓ + ÉK HÁTRÁNY
+            candidates.sort(
+                key=lambda x: (
+                    x["count"],
+                    1 if x["ÉK"] else 0
+                )
+            )
+
+            for c in candidates:
                 if len(assigned) == needed:
                     break
 
-                assigned.append(name)
-                used.add(name)
-                assignment_count[name] += 1
+                assigned.append(c["név"])
+                used.add(c["név"])
+                assignment_count[c["név"]] += 1
 
-                # ha ÉK-s került be
-                if next(w for w in workers if w["név"] == name).get("ÉK") == "igen":
+                if c["ÉK"]:
                     ek_used = True
 
             show_block["szerepek"].append({
@@ -142,7 +160,7 @@ def generate_schedule():
 
         schedule.append(show_block)
 
-    return render_template("schedule.html", schedule=schedule)
+    return render_template("schedule.html", schedule=schedule, workers=workers)
 
 
 if __name__ == "__main__":
