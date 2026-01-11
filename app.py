@@ -47,6 +47,7 @@ def logout():
 # =====================================================
 workers, shows, schedule = [], [], []
 assignment_count, last_days = {}, {}
+watched_titles = {}
 
 ROLE_RULES = {
     9: {
@@ -77,7 +78,7 @@ def normalize_date(v):
 def normalize_list(v):
     if not v or (isinstance(v, float) and math.isnan(v)):
         return []
-    return [x.strip() for x in str(v).split(",") if x.strip()]
+    return [x.strip().lower() for x in str(v).split(",") if x.strip()]
 
 def import_file(file):
     wb = load_workbook(file, data_only=True)
@@ -100,15 +101,10 @@ def pick_worker(candidates, role, prefer_names=None):
     scored = []
     for w in candidates:
         score = assignment_count[w["név"]]
-
-        # 🔴 FINOM ÉK-HÁTRÁNY BEÜLŐSNÉL
-        if role == "nézőtér beülős":
-            if w.get("ÉK") == "igen":
-                if not prefer_names or w["név"] not in prefer_names:
-                    score += 1   # nagyon enyhe hátrány
-
+        if role == "nézőtér beülős" and w.get("ÉK") == "igen":
+            if not prefer_names or w["név"] not in prefer_names:
+                score += 1
         scored.append((score, w))
-
     min_score = min(s for s, _ in scored)
     return random.choice([w for s, w in scored if s == min_score])
 
@@ -125,9 +121,11 @@ def import_workers():
     workers = import_file(request.files["file"])
     assignment_count.clear()
     last_days.clear()
+    watched_titles.clear()
     for w in workers:
         assignment_count[w["név"]] = 0
         last_days[w["név"]] = []
+        watched_titles[w["név"]] = set()
     return redirect("/")
 
 @app.route("/import/shows", methods=["POST"])
@@ -179,11 +177,12 @@ def generate_schedule():
                 return False
             return True
 
-        # ================= BEÜLŐS =================
+        # -------- BEÜLŐS --------
         for _ in range(rules["nézőtér beülős"]):
             prefer = [
                 w for w in workers
-                if title in [s.lower() for s in normalize_list(w.get("nézni_akar"))]
+                if title in normalize_list(w.get("nézni_akar"))
+                and title not in watched_titles[w["név"]]
                 and eligible(w, "nézőtér beülős")
             ]
 
@@ -202,29 +201,25 @@ def generate_schedule():
                 "watched": w in prefer
             })
 
+            if w in prefer:
+                watched_titles[w["név"]].add(title)
+
             used.add(w["név"])
             assignment_count[w["név"]] += 1
             last_days[w["név"]].append(date)
             if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # ================= TÖBBI SZEREP =================
+        # -------- TÖBBI SZEREP --------
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
-
             for _ in range(needed):
                 pool = [w for w in workers if eligible(w, role)]
                 if not pool:
                     break
-
                 w = pick_worker(pool, role)
-
-                assigned[role].append({
-                    "név": w["név"],
-                    "watched": False
-                })
-
+                assigned[role].append({"név": w["név"], "watched": False})
                 used.add(w["név"])
                 assignment_count[w["név"]] += 1
                 last_days[w["név"]].append(date)
@@ -304,3 +299,4 @@ def export_xlsx():
 # =====================================================
 if __name__ == "__main__":
     app.run(debug=True)
+
