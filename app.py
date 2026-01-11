@@ -12,8 +12,8 @@ app.config["SESSION_PERMANENT"] = False
 # USERS
 # =====================================================
 USERS = {
-    "admin": {"password": generate_password_hash("admin123"), "role": "admin"},
-    "vezeto": {"password": generate_password_hash("vezeto123"), "role": "user"}
+    "Szidi": {"password": generate_password_hash("beo1234"), "role": "admin"},
+    "Zsuzsi": {"password": generate_password_hash("beo123"), "role": "user"}
 }
 
 # =====================================================
