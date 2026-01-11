@@ -8,17 +8,13 @@ app = Flask(__name__)
 app.secret_key = "nagyon_titkos_kulcs"
 app.config["SESSION_PERMANENT"] = False
 
-# =====================================================
-# USERS
-# =====================================================
+# ================= USERS =================
 USERS = {
     "Szidi": {"password": generate_password_hash("admin123"), "role": "admin"},
     "Zsuzsi": {"password": generate_password_hash("beo123"), "role": "user"}
 }
 
-# =====================================================
-# AUTH
-# =====================================================
+# ================= AUTH =================
 @app.before_request
 def force_login():
     if not request.path.startswith("/login") and not request.path.startswith("/static"):
@@ -42,9 +38,7 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# =====================================================
-# DATA
-# =====================================================
+# ================= DATA =================
 workers, shows, schedule = [], [], []
 assignment_count, last_days = {}, {}
 
@@ -68,9 +62,7 @@ ROLE_RULES = {
 
 MAX_CONSECUTIVE = 3
 
-# =====================================================
-# HELPERS
-# =====================================================
+# ================= HELPERS =================
 def normalize_date(v):
     return v.strftime("%Y-%m-%d") if isinstance(v, datetime) else str(v)[:10]
 
@@ -96,23 +88,15 @@ def can_work(name, date):
         for i, ld in enumerate(reversed(last))
     )
 
-def pick_worker(candidates, role):
+def pick_worker(candidates):
     scored = []
     for w in candidates:
         score = assignment_count[w["név"]]
-
-        # ÉK csak NEM beülősnél legyen hátrébb
-        if role != "nézőtér beülős" and w.get("ÉK") == "igen":
-            score += 3
-
         scored.append((score, w))
-
     min_score = min(s for s, _ in scored)
     return random.choice([w for s, w in scored if s == min_score])
 
-# =====================================================
-# ROUTES
-# =====================================================
+# ================= ROUTES =================
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -177,20 +161,22 @@ def generate_schedule():
                 return False
             return True
 
-        # -------- BEÜLŐS --------
+        # ---- BEÜLŐS ----
         for _ in range(rules["nézőtér beülős"]):
             prefer = [
                 w for w in workers
                 if title in [s.lower() for s in normalize_list(w.get("nézni_akar"))]
                 and eligible(w, "nézőtér beülős")
             ]
+
             pool = prefer if prefer else [
                 w for w in workers if eligible(w, "nézőtér beülős")
             ]
+
             if not pool:
                 break
 
-            w = pick_worker(pool, "nézőtér beülős")
+            w = pick_worker(pool)
             assigned["nézőtér beülős"].append({
                 "név": w["név"],
                 "watched": w in prefer
@@ -201,7 +187,7 @@ def generate_schedule():
             if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # -------- TÖBBI SZEREP --------
+        # ---- TÖBBI SZEREP ----
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
@@ -209,11 +195,8 @@ def generate_schedule():
                 pool = [w for w in workers if eligible(w, role)]
                 if not pool:
                     break
-                w = pick_worker(pool, role)
-                assigned[role].append({
-                    "név": w["név"],
-                    "watched": False
-                })
+                w = pick_worker(pool)
+                assigned[role].append({"név": w["név"], "watched": False})
                 used.add(w["név"])
                 assignment_count[w["név"]] += 1
                 last_days[w["név"]].append(date)
@@ -231,9 +214,7 @@ def generate_schedule():
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
 
-# =====================================================
-# STATS
-# =====================================================
+# ================= STATS =================
 @app.route("/stats")
 def stats():
     stats = {}
@@ -256,9 +237,7 @@ def stats():
 
     return render_template("stats.html", stats=stats)
 
-# =====================================================
-# EXPORT
-# =====================================================
+# ================= EXPORT =================
 @app.route("/export/xlsx")
 def export_xlsx():
     wb = Workbook()
@@ -288,8 +267,6 @@ def export_xlsx():
     wb.save(tmp.name)
     return send_file(tmp.name, as_attachment=True, download_name="beosztas.xlsx")
 
-# =====================================================
-# RUN
-# =====================================================
+# ================= RUN =================
 if __name__ == "__main__":
     app.run(debug=True)
