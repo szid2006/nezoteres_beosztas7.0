@@ -12,7 +12,7 @@ app.config["SESSION_PERMANENT"] = False
 # USERS
 # =====================================================
 USERS = {
-    "Szidi": {"password": generate_password_hash("beo1234"), "role": "admin"},
+    "Szidi": {"password": generate_password_hash("admin123"), "role": "admin"},
     "Zsuzsi": {"password": generate_password_hash("beo123"), "role": "user"}
 }
 
@@ -45,12 +45,8 @@ def logout():
 # =====================================================
 # DATA
 # =====================================================
-workers = []
-shows = []
-schedule = []
-
-assignment_count = {}
-last_days = {}
+workers, shows, schedule = [], [], []
+assignment_count, last_days = {}, {}
 
 ROLE_RULES = {
     9: {
@@ -105,16 +101,12 @@ def pick_worker(candidates, role):
     for w in candidates:
         score = assignment_count[w["név"]]
 
-        # ÉK csak NEM beülős szerepnél legyen hátrébb
+        # ÉK csak NEM beülősnél legyen hátrébb
         if role != "nézőtér beülős" and w.get("ÉK") == "igen":
             score += 3
 
         scored.append((score, w))
 
-    min_score = min(s for s, _ in scored)
-    return random.choice([w for s, w in scored if s == min_score])
-
-        scored.append((score, w))
     min_score = min(s for s, _ in scored)
     return random.choice([w for s, w in scored if s == min_score])
 
@@ -154,6 +146,8 @@ def generate_schedule():
             total = 0
 
         rules = ROLE_RULES.get(total)
+        date = normalize_date(show.get("dátum"))
+        title = str(show.get("cím", "")).lower()
 
         show_block = {
             "cím": show.get("cím"),
@@ -167,11 +161,7 @@ def generate_schedule():
             schedule.append(show_block)
             continue
 
-        date = normalize_date(show.get("dátum"))
-        title = str(show.get("cím", "")).lower()
-
-        used = set()
-        ek_used = False
+        used, ek_used = set(), False
         assigned = {r: [] for r in rules}
 
         def eligible(w, role):
@@ -187,18 +177,20 @@ def generate_schedule():
                 return False
             return True
 
-        # ---- BEÜLŐS ----
+        # -------- BEÜLŐS --------
         for _ in range(rules["nézőtér beülős"]):
             prefer = [
                 w for w in workers
                 if title in [s.lower() for s in normalize_list(w.get("nézni_akar"))]
                 and eligible(w, "nézőtér beülős")
             ]
-            pool = prefer if prefer else [w for w in workers if eligible(w, "nézőtér beülős")]
+            pool = prefer if prefer else [
+                w for w in workers if eligible(w, "nézőtér beülős")
+            ]
             if not pool:
                 break
 
-            w = pick_worker(pool)
+            w = pick_worker(pool, "nézőtér beülős")
             assigned["nézőtér beülős"].append({
                 "név": w["név"],
                 "watched": w in prefer
@@ -209,7 +201,7 @@ def generate_schedule():
             if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # ---- TÖBBI SZEREP ----
+        # -------- TÖBBI SZEREP --------
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
@@ -217,8 +209,11 @@ def generate_schedule():
                 pool = [w for w in workers if eligible(w, role)]
                 if not pool:
                     break
-                w = pick_worker(pool)
-                assigned[role].append({"név": w["név"], "watched": False})
+                w = pick_worker(pool, role)
+                assigned[role].append({
+                    "név": w["név"],
+                    "watched": False
+                })
                 used.add(w["név"])
                 assignment_count[w["név"]] += 1
                 last_days[w["név"]].append(date)
