@@ -8,13 +8,17 @@ app = Flask(__name__)
 app.secret_key = "nagyon_titkos_kulcs"
 app.config["SESSION_PERMANENT"] = False
 
-# ===================== USERS =====================
+# =====================================================
+# USERS
+# =====================================================
 USERS = {
     "admin": {"password": generate_password_hash("admin123"), "role": "admin"},
     "vezeto": {"password": generate_password_hash("vezeto123"), "role": "user"}
 }
 
-# ===================== AUTH =====================
+# =====================================================
+# AUTH
+# =====================================================
 @app.before_request
 def force_login():
     if not request.path.startswith("/login") and not request.path.startswith("/static"):
@@ -24,7 +28,8 @@ def force_login():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        u, p = request.form["username"], request.form["password"]
+        u = request.form["username"]
+        p = request.form["password"]
         if u in USERS and check_password_hash(USERS[u]["password"], p):
             session.clear()
             session["user"] = u
@@ -37,19 +42,39 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# ===================== DATA =====================
-workers, shows, schedule = [], [], []
+# =====================================================
+# DATA
+# =====================================================
+workers = []
+shows = []
+schedule = []
+
 assignment_count = {}
 last_days = {}
 
 ROLE_RULES = {
-    9: {"nézőtér beülős":2,"nézőtér csipog":2,"ruhatár bal":2,"ruhatár jobb":1,"ruhatár erkély":1,"jolly joker":1},
-    8: {"nézőtér beülős":2,"nézőtér csipog":2,"ruhatár bal":2,"ruhatár jobb":1,"jolly joker":1}
+    9: {
+        "nézőtér beülős": 2,
+        "nézőtér csipog": 2,
+        "ruhatár bal": 2,
+        "ruhatár jobb": 1,
+        "ruhatár erkély": 1,
+        "jolly joker": 1
+    },
+    8: {
+        "nézőtér beülős": 2,
+        "nézőtér csipog": 2,
+        "ruhatár bal": 2,
+        "ruhatár jobb": 1,
+        "jolly joker": 1
+    }
 }
 
 MAX_CONSECUTIVE = 3
 
-# ===================== HELPERS =====================
+# =====================================================
+# HELPERS
+# =====================================================
 def normalize_date(v):
     return v.strftime("%Y-%m-%d") if isinstance(v, datetime) else str(v)[:10]
 
@@ -70,19 +95,24 @@ def can_work(name, date):
         return True
     last = sorted(days)[-MAX_CONSECUTIVE:]
     d = datetime.strptime(date, "%Y-%m-%d")
-    return not all((d - datetime.strptime(ld, "%Y-%m-%d")).days == i+1 for i, ld in enumerate(reversed(last)))
+    return not all(
+        (d - datetime.strptime(ld, "%Y-%m-%d")).days == i + 1
+        for i, ld in enumerate(reversed(last))
+    )
 
 def pick_worker(candidates):
     scored = []
     for w in candidates:
         score = assignment_count[w["név"]]
         if w.get("ÉK") == "igen":
-            score += 3  # ÉK ritkábban
+            score += 3
         scored.append((score, w))
     min_score = min(s for s, _ in scored)
     return random.choice([w for s, w in scored if s == min_score])
 
-# ===================== ROUTES =====================
+# =====================================================
+# ROUTES
+# =====================================================
 @app.route("/")
 def index():
     return render_template("import.html")
@@ -110,16 +140,33 @@ def generate_schedule():
     schedule = []
 
     for show in shows:
-        date = normalize_date(show["dátum"])
-        title = show["cím"].lower()
-        rules = ROLE_RULES[int(show["létszám"])]
+        try:
+            total = int(float(show.get("létszám", 0)))
+        except:
+            total = 0
+
+        rules = ROLE_RULES.get(total)
+
+        show_block = {
+            "cím": show.get("cím"),
+            "dátum": show.get("dátum"),
+            "szerepek": [],
+            "hiba": None
+        }
+
+        if not rules:
+            show_block["hiba"] = f"Nincs szabály erre a létszámra: {show.get('létszám')}"
+            schedule.append(show_block)
+            continue
+
+        date = normalize_date(show.get("dátum"))
+        title = str(show.get("cím", "")).lower()
 
         used = set()
-        ek_used = False   # 🔴 MAX 1 ÉK / ELŐADÁS
+        ek_used = False
         assigned = {r: [] for r in rules}
 
         def eligible(w, role):
-            nonlocal ek_used
             if w["név"] in used:
                 return False
             if date in normalize_list(w.get("nem_ér_rá")):
@@ -132,7 +179,7 @@ def generate_schedule():
                 return False
             return True
 
-        # ===== BEÜLŐS =====
+        # ---- BEÜLŐS ----
         for _ in range(rules["nézőtér beülős"]):
             prefer = [
                 w for w in workers
@@ -154,7 +201,7 @@ def generate_schedule():
             if w.get("ÉK") == "igen":
                 ek_used = True
 
-        # ===== TÖBBI SZEREP =====
+        # ---- TÖBBI SZEREP ----
         for role, needed in rules.items():
             if role == "nézőtér beülős":
                 continue
@@ -170,18 +217,45 @@ def generate_schedule():
                 if w.get("ÉK") == "igen":
                     ek_used = True
 
-        schedule.append({
-            "cím": show["cím"],
-            "dátum": show["dátum"],
-            "szerepek": [
-                {"szerep": r, "kért": rules[r], "kiosztott": assigned[r]}
-                for r in rules
-            ]
-        })
+        for role in rules:
+            show_block["szerepek"].append({
+                "szerep": role,
+                "kért": rules[role],
+                "kiosztott": assigned[role]
+            })
+
+        schedule.append(show_block)
 
     return render_template("schedule.html", schedule=schedule, workers=workers)
 
-# ===================== EXPORT =====================
+# =====================================================
+# STATS
+# =====================================================
+@app.route("/stats")
+def stats():
+    stats = {}
+    for w in workers:
+        stats[w["név"]] = {
+            "összes": 0,
+            "beülős": 0,
+            "nézős": 0,
+            "ÉK": (w.get("ÉK") == "igen")
+        }
+
+    for show in schedule:
+        for role in show["szerepek"]:
+            for p in role["kiosztott"]:
+                stats[p["név"]]["összes"] += 1
+                if role["szerep"] == "nézőtér beülős":
+                    stats[p["név"]]["beülős"] += 1
+                if p.get("watched"):
+                    stats[p["név"]]["nézős"] += 1
+
+    return render_template("stats.html", stats=stats)
+
+# =====================================================
+# EXPORT
+# =====================================================
 @app.route("/export/xlsx")
 def export_xlsx():
     wb = Workbook()
@@ -207,10 +281,12 @@ def export_xlsx():
             *(m.get("ruhatár erkély", [""]))
         ])
 
-    f = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    wb.save(f.name)
-    return send_file(f.name, as_attachment=True, download_name="beosztas.xlsx")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    wb.save(tmp.name)
+    return send_file(tmp.name, as_attachment=True, download_name="beosztas.xlsx")
 
-# ===================== RUN =====================
+# =====================================================
+# RUN
+# =====================================================
 if __name__ == "__main__":
     app.run(debug=True)
