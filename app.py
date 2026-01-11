@@ -100,12 +100,20 @@ def can_work(name, date):
         for i, ld in enumerate(reversed(last))
     )
 
-def pick_worker(candidates):
+def pick_worker(candidates, role):
     scored = []
     for w in candidates:
         score = assignment_count[w["név"]]
-        if w.get("ÉK") == "igen":
+
+        # ÉK csak NEM beülős szerepnél legyen hátrébb
+        if role != "nézőtér beülős" and w.get("ÉK") == "igen":
             score += 3
+
+        scored.append((score, w))
+
+    min_score = min(s for s, _ in scored)
+    return random.choice([w for s, w in scored if s == min_score])
+
         scored.append((score, w))
     min_score = min(s for s, _ in scored)
     return random.choice([w for s, w in scored if s == min_score])
